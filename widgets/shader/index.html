@@ -1,7 +1,9 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>hikari - shader</title>
-<script>if(!window.hikari)document.write('<script src="../../preview/mock-hikari.js"><\/script>')</script>
+<!-- Under the host these come from the preload bridge. In a browser the mock stands in,
+     and it needs the shared config module to read the query string. -->
+<script>if(!window.hikari)document.write('<script src="../../src/lib/config.js"><\/script><script src="../../preview/mock-hikari.js"><\/script>')</script>
 <script src="../../src/lib/glsl.js"></script>
 <link rel="stylesheet" href="../theme.css">
 <style>
@@ -22,15 +24,17 @@
 <pre id="fault" hidden></pre>
 <script>
 (async () => {
-  const { hexToVec3, buildSource, remapErrors, formatErrors, uniformsFrom } = window.hikariGlsl;
+  const { parseColour, buildSource, remapErrors, formatErrors, uniformsFrom } = window.hikariGlsl;
   const canvas = document.getElementById("c");
   const faultBox = document.getElementById("fault");
 
   const fault = (msg) => { faultBox.textContent = msg; faultBox.hidden = false; };
 
-  const params = new URLSearchParams(location.search);
-  const cfg = { ...(await window.hikari.config?.() ?? {}) };
-  for (const [k, v] of params) cfg[k] = v === "true" ? true : v === "false" ? false : v;
+  const cfg = (await window.hikari.config()) ?? {};
+  // A settings change is applied by reloading: a different shader means compiling a
+  // different program, and reload cannot drift from what startup does.
+  window.hikari.onConfigChange(() => location.reload());
+
   // Refuse an unsafe name rather than scrubbing it. Stripping the bad characters turns
   // "../secret" into "secret" and then reports a 404 for a file nobody asked about, which
   // sends the reader looking for the wrong problem.
@@ -94,7 +98,7 @@
   // theme change reskins every shader without any of them knowing about it.
   const css = getComputedStyle(document.documentElement);
   const colour = (varName, fallback) =>
-    hexToVec3(css.getPropertyValue(varName).trim()) ?? hexToVec3(fallback);
+    parseColour(css.getPropertyValue(varName).trim()) ?? parseColour(fallback);
   const bg = colour("--bg", "#0b0b11");
   const accent = colour("--accent", "#8b7cf6");
   const accent2 = colour("--accent-2", "#7fc9d1");

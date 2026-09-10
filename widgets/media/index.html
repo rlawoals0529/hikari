@@ -1,4 +1,7 @@
 <!doctype html><meta charset="utf-8">
+<!-- Under the host these come from the preload bridge. In a browser the mock stands in,
+     and it needs the shared config module to read the query string. -->
+<script>if(!window.hikari)document.write('<script src="../../src/lib/config.js"><\/script><script src="../../preview/mock-hikari.js"><\/script>')</script>
 <link rel="stylesheet" href="../theme.css">
 <style>
   html, body { background: transparent; }
@@ -27,6 +30,9 @@
 
   function mount(cfg) {
     const stage = document.getElementById("stage");
+    // Emptied first: mount runs again on a settings change, and appending would leave the
+    // old video playing underneath the new one.
+    stage.replaceChildren();
     const src = (cfg.source || "").trim();
     stage.className = "stage fit-" + (cfg.fit || "cover");
     stage.style.opacity = cfg.opacity ?? 1;
@@ -63,16 +69,9 @@
     }
   }
 
-  // The host hands the manifest to the widget; the preview passes a query string instead.
-  const q = new URLSearchParams(location.search);
-  if (window.hikari?.config) {
-    window.hikari.config().then(mount);
-  } else {
-    mount({
-      source: q.get("source") || "",
-      fit: q.get("fit") || "cover",
-      opacity: Number(q.get("opacity") ?? 1),
-      radius: Number(q.get("radius") ?? 16),
-    });
-  }
+  window.hikari.config().then(mount);
+  // Re-mount on a settings change, so editing the source does not need a restart. The
+  // element is rebuilt from scratch because switching between a video and an image means
+  // a different element, not a different attribute.
+  window.hikari.onConfigChange(mount);
 </script>

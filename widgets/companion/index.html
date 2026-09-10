@@ -1,7 +1,9 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>hikari - companion</title>
-<script>if(!window.hikari)document.write('<script src="../../preview/mock-hikari.js"><\/script>')</script>
+<!-- Under the host these come from the preload bridge. In a browser the mock stands in,
+     and it needs the shared config module to read the query string. -->
+<script>if(!window.hikari)document.write('<script src="../../src/lib/config.js"><\/script><script src="../../preview/mock-hikari.js"><\/script>')</script>
 <script src="../../src/lib/mood.js"></script>
 <link rel="stylesheet" href="../theme.css">
 <style>
@@ -87,9 +89,10 @@
 (async () => {
   const { moodFrom, breath, blinking } = window.hikariMood;
 
-  const params = new URLSearchParams(location.search);
-  const cfg = { ...(await window.hikari.config?.() ?? {}) };
-  for (const [k, v] of params) cfg[k] = v === "true" ? true : v === "false" ? false : v;
+  const cfg = (await window.hikari.config()) ?? {};
+
+  // A settings change is applied by reloading, which cannot drift from what startup does.
+  window.hikari.onConfigChange(() => location.reload());
 
   const stage = document.getElementById("stage");
   const label = document.getElementById("label");
@@ -104,12 +107,11 @@
   let state = {};
   window.hikari.subscribe?.((s) => { state = s; });
 
-  // A fixed hour can be forced so the sleepy state is reachable in a preview at midday,
-  // and a mood can be forced outright so the gallery and the screenshots can show all
-  // six without waiting for the machine to produce them. Preview only; the host passes
-  // neither.
-  const forcedHour = params.has("hour") ? Number(params.get("hour")) : null;
-  const forcedMood = params.get("mood");
+  // A fixed hour can be forced so the sleepy state is reachable at midday, and a mood can
+  // be forced outright so the gallery and the screenshots can show all six without waiting
+  // for the machine to produce them. Neither is set by default.
+  const forcedHour = cfg.hour === undefined ? null : Number(cfg.hour);
+  const forcedMood = cfg.mood ?? null;
   const FORCED = {
     unknown:   {},
     idle:      { cpu: { usage: 6 } },

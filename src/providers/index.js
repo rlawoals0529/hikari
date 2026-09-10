@@ -1,9 +1,19 @@
 /**
  * Providers are the only place platform-specific code lives.
  *
- * Each is `{ name, intervalMs, read() }` returning a plain object. The host polls them
- * and broadcasts the merged result; a widget never learns which OS it is on, which is
- * what lets one widget run on Windows, macOS and Linux unchanged.
+ * Each is `{ name, intervalMs, read(config), defaults? }` returning a plain object. The
+ * host polls them and broadcasts the merged result; a widget never learns which OS it is
+ * on, which is what lets one widget run on Windows, macOS and Linux unchanged.
+ *
+ * `config` is the provider's `defaults` with the user's `providers.<name>` block from
+ * `~/.hikari/config.json` over the top, and it is passed on every read rather than at
+ * registration so a provider can never hold a setting the user has since changed. It has
+ * to come from there rather than from a widget manifest, because one poll serves every
+ * widget and there is no single widget to ask. `intervalMs` in that block overrides the
+ * provider's own, floored so a typo cannot spin a core.
+ *
+ * None of the providers below need config yet. The seam exists because a latitude, a
+ * calendar URL or a units preference has nowhere else to arrive from.
  */
 const os = require("node:os");
 const { media } = require("./media");

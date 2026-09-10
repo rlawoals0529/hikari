@@ -36,6 +36,71 @@ widget. `offsetX` and `offsetY` stack on top, which is how two widgets share an 
 Set `"interactive": true` for a widget with buttons. Anything else is click-through, so it
 never eats a click meant for the desktop behind it.
 
+## Overlays
+
+Three keys turn a widget into something you summon rather than something that sits there.
+
+```json
+{ "name": "decoder", "hotkey": "Alt+Space", "startHidden": true, "interactive": true,
+  "clipboard": true, "anchor": "middle_center", "width": 720, "height": 460 }
+```
+
+| | |
+| --- | --- |
+| `hotkey` | a global shortcut that shows and hides this widget |
+| `startHidden` | built and loaded at startup, but not on screen until summoned |
+| `clipboard` | this widget may read the clipboard. Nothing else may |
+
+`interactive` matters here too: a window built non-focusable cannot be typed into, and
+`focus()` on one does nothing.
+
+**A global shortcut that quietly does nothing is the whole failure mode of this feature**,
+so every reason one is unbound is printed at startup. There are three, and none of them
+announces itself otherwise:
+
+- The accelerator is not one Electron understands. `Ctrl+Shft+K` is a one-character typo, so
+  the message names `shft` rather than the whole string.
+- Two widgets asked for the same shortcut. First asked wins and the other is told who has
+  it, because registering both means one never fires with nothing to say which.
+- Another application already owns it. `globalShortcut.register` reports this by returning
+  `false`, and ignoring that return is the classic bug here.
+
+A shortcut with no modifier is refused outright. `"hotkey": "K"` would take that key away
+from every application on the machine, including the one in front of you.
+
+### Clipboard access is asked for, and refused by default
+
+Until this, the worst a widget could do was skip a track. Reading the clipboard is a
+different class of thing: a wallpaper shader that could read a password you had just copied
+is not a wallpaper. So it is opt in per widget, and the check happens in the main process
+against the manifest of the window the request came from, which is the one place a widget
+cannot reach.
+
+```js
+// Rejects for a widget whose widget.json did not ask.
+const text = await hikari.clipboard.readText();
+
+// The cue that matters: the interaction is copy something, then press the key.
+hikari.onShown(() => hikari.clipboard.readText().then(decode));
+```
+
+A widget reading the clipboard at load reads it at the wrong moment, which is what
+`onShown` is for. And a refusal rejects rather than returning an empty string: an empty
+string is indistinguishable from an empty clipboard, so the widget would say "nothing
+copied" and the permission would look like a bug in the clipboard.
+
+The preview's `?clipboardText=...` stands in for the clipboard so an overlay can be built
+against a known input. It does **not** model the permission, because a browser has no
+trusted process to enforce it in, and a second copy of a security rule is worse than none.
+
+## Editing a widget applies it
+
+The host watches both widget roots as well as `~/.hikari`:
+
+- an `index.html`, a stylesheet or a shader changes, and that one window reloads
+- a `widget.json` changes, and the host re-discovers, so a widget can be added, removed,
+  moved or renamed while it is running
+
 ## Media, GIF and video
 
 A widget can be a **GIF, APNG, WebP, MP4 or WebM**, local file or URL. The `media` widget
@@ -97,8 +162,8 @@ Two things a desktop widget forces you to get right:
 With no input it draws a slow ambient wave and says why. Unknown must never render as flat
 silence: the two look identical and mean opposite things.
 
-`?demo=1` in the preview drives it from an oscillator, so it can be seen and screenshot
-without a microphone.
+`"source": "demo"` drives it from an oscillator instead of a microphone, so it can be
+seen and screenshot on a machine with no audio input.
 
 ## Shader wallpapers
 
@@ -220,6 +285,59 @@ samples land inside one tick. The widgets render `--` for that.
 A fabricated `0%` is indistinguishable from a genuinely idle machine, and it is the reading
 a person acts on.
 
+## Settings live outside the repo
+
+`widget.json` is the widget author's defaults. Yours go in `~/.hikari/config.json`, keyed
+by widget name, and they win:
+
+```json
+{
+  "widgets": {
+    "clock": { "anchor": "bottom_left", "offsetY": -40 },
+    "shader": { "shader": "starfield", "fps": 24 },
+    "companion": { "enabled": false }
+  },
+  "providers": {
+    "cpu": { "intervalMs": 5000 }
+  }
+}
+```
+
+Three things follow from doing it this way rather than by editing `widgets/*/widget.json`:
+
+- **Customising never touches a tracked file**, so a pull cannot conflict with your layout.
+- **`"enabled": false` turns a bundled widget off** without deleting it. The override is
+  applied before the widget is discovered, so at startup nothing about it loads at all.
+- **Saving the file applies it.** No restart: the host reconciles, so a widget you switch off
+  closes, one you switch on opens, and the rest move to where you put them. It watches the
+  *directory* rather than the file, because an editor saves by writing a temporary file and
+  renaming it over the target, which replaces the inode and leaves a file watcher pointed at
+  something nothing will ever write to again.
+
+Objects merge one key at a time and arrays replace whole, so a list you set is the list you
+get. A key that is present wins even when its value is `null`, which is how you clear a
+default; leaving it out is the only way to say "leave it alone".
+
+`~/.hikari/theme.css` is a stylesheet layered over the bundled one. The host injects both
+into every widget, which is also what makes a widget in `~/.hikari/widgets/` themed at all:
+a widget's own `<link href="../theme.css">` resolves against its own folder, so outside the
+repo it pointed at a file that does not exist.
+
+An unusable value is refused rather than obeyed. A provider interval below 250ms is clamped
+and says so, because a typo of `1` would spin a core forever and a hot fan points nowhere
+near the file that caused it.
+
+`HIKARI_HOME` moves that whole directory somewhere else:
+
+```bash
+HIKARI_HOME=/tmp/hikari-try npm start
+```
+
+Which is how the host gets run against a throwaway config instead of the one you use.
+`$HOME` cannot do that job: on macOS `app.getPath("home")` asks the operating system and
+ignores `$HOME`, so a run with `HOME` pointed elsewhere silently reads your real settings
+and reports that everything is fine.
+
 ## Run it
 
 ```bash
@@ -240,24 +358,77 @@ Each widget falls back to a mocked bridge when the real one is absent, so the sa
 `index.html` opens in a plain browser with drifting CPU, a rotating track and a running
 clock. Iterating on how a widget looks should not require restarting a desktop shell.
 
+The mock's `config()` reads the query string, so `?shader=starfield&fps=24` in the preview
+is the same setting as `{"shader": "starfield", "fps": 24}` on the desktop. That is one
+place, deliberately: every widget used to carry its own `URLSearchParams` merge beside its
+`config()` call, and each of the four copies had a different bug. One read every value as a
+string, so `?showLabel=false` was the truthy string `"false"` and the label stayed on. One
+looked at two keys and ignored the rest. One ignored the query string under the host and the
+manifest under the preview, so the preview could not show what the desktop would do, which
+is the only thing a preview is for.
+
 ## Tests
 
 ```bash
 npm test
 ```
 
-Twenty-one tests: placement geometry and widget discovery: work-area anchoring against a
-taskbar, every anchor, stacked offsets, a second monitor's origin, manifest defaults, a screen-filling wallpaper ignoring the work-area inset on any monitor, and the audio band maths - logarithmic bucketing, every band owning a bin on a small transform, asymmetric smoothing, and silence reading as zero rather than noise.
-The host imports Electron at load, so the tests stub it - which is possible only because
-the geometry is a pure function.
+A hundred and sixteen tests over the pure half: placement geometry and discovery (work-area anchoring
+against a taskbar, every anchor, stacked offsets, a second monitor's origin, manifest
+defaults, a screen-filling wallpaper ignoring the work-area inset on any monitor), the audio
+band maths (logarithmic bucketing, every band owning a bin on a small transform, asymmetric
+smoothing, silence reading as zero rather than noise), the shader prelude and its error line
+remapping, colour parsing, the companion's mood precedence, the theme layer order, the
+settings merge, the accelerator grammar, which changed file means what, and the capability
+checks.
+
+The capability tests are all refusals, on purpose. The grant is one line; the refusals are
+why that line is safe. A widget that did not ask, a window the host cannot identify, and a
+`"clipboard": "false"` that is a truthy string are each pinned, because a permission that
+turns itself on when you try to write it off is the worst direction for that mistake.
+
+The host imports Electron at load, so the tests stub it, which is possible only because the
+geometry is a pure function. `npm test` globs `test/*.test.js` rather than naming files: it
+used to name two of them, and the other three had never run once.
 
 ## Status
 
-Providers, placement geometry, discovery and all three widgets are verified: 7 passing
-tests, and the widgets render and update live in the browser preview above.
+116 passing tests over the pure half, the widgets rendering live in the browser preview
+above, and the host itself run against a throwaway `HIKARI_HOME` with two extra widgets
+dropped in `widgets/` there. That run confirmed, in the app rather than in a test:
 
-**The Electron host itself has not been run.** Electron's binary would not install in the
-environment this was written in, so `src/main.js` is verified by reading and by its unit
-tests rather than by launching. Expect first-run adjustments around window flags.
+- a widget outside the repo is discovered, and **is themed**, with both the bundled sheet
+  and `~/.hikari/theme.css` readable by its first line of script
+- `"clipboard": true` reads the clipboard, and a widget without it gets a rejection
+  carrying the reason
+- one hotkey bound, and the other three refused for their three different reasons
+- `"intervalMs": 1` clamped to the floor, and said so
+- `"enabled": false` kept three widgets from ever loading
+- editing `config.json` while it ran opened one widget, closed another, and pushed each
+  remaining one its own new settings
+- editing a widget's `index.html` reloaded that one window, inside and outside the repo
+
+**Two things the host does are still unverified.** A hotkey actually toggling a window needs
+a real keypress, and the window flags -- click-through, the wallpaper layer, always-on-top
+against a fullscreen app -- need eyes on a desktop.
+
+### What the first real run found
+
+Two bugs that no test in this repo could have caught, both of them mine, and both invisible
+from the browser preview:
+
+**The theme was applied too late to be read.** The host injected it with
+`webContents.insertCSS` on `did-finish-load`, which fires *after* the page's own scripts
+have run. Widgets read their tokens at startup: the shader reads `--accent` once to build
+its uniforms, so it would have fallen back to its hardcoded purple and teal with a fully
+themed page underneath it. It is applied from the preload now, via `webFrame.insertCSS`,
+which runs before any page script. The preview could never have shown this, because there
+the `<link href="../theme.css">` still resolves.
+
+**`app.getPath("home")` ignores `$HOME`.** The first attempt at an isolated run pointed
+`HOME` at a temporary directory, and the app read the real one and reported that it had
+found nothing wrong, which is the worst possible outcome for a test. On macOS that call asks
+the OS; `os.homedir()` is the one that respects the variable. Hence `HIKARI_HOME`, which is
+an explicit override rather than a change to what a real install reads.
 
 MIT

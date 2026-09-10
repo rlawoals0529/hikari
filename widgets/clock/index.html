@@ -1,5 +1,7 @@
 <!doctype html><meta charset="utf-8"><link rel="stylesheet" href="../theme.css">
-<script>if(!window.hikari)document.write('<script src="../../preview/mock-hikari.js"><\/script>')</script>
+<!-- Under the host these come from the preload bridge. In a browser the mock stands in,
+     and it needs the shared config module to read the query string. -->
+<script>if(!window.hikari)document.write('<script src="../../src/lib/config.js"><\/script><script src="../../preview/mock-hikari.js"><\/script>')</script>
 <style>
   .time { font-size: 40px; font-weight: 300; letter-spacing: 1px; font-variant-numeric: tabular-nums; line-height: 1; }
   .time .sec { font-size: 17px; color: var(--accent); margin-left: 4px; }
