@@ -6,6 +6,5 @@
   "shader": "aurora",
   "fps": 30,
   "scale": 1,
-  "audio": false,
-  "source": "microphone"
+  "audio": false
 }

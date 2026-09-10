@@ -87,6 +87,13 @@ function blinking(elapsedMs, eyes) {
   return into >= at && into < at + 130;
 }
 
-const api = { moodFrom, breath, blinking, BUSY, WORKING, isLate };
-if (typeof module !== "undefined" && module.exports) module.exports = api;
-if (typeof window !== "undefined") window.hikariMood = api;
+// Block-scoped so `api` is not a global. More than one of these files loads into the same
+// page as a classic script -- the shader pulls in glsl and config, the companion mood and
+// config -- and they share one global scope, so a second top-level `const api` is a
+// redeclaration SyntaxError that discards the entire file. The symptom is an undefined
+// `window.hikariGlsl` in a widget that never mentions `api`, which points nowhere near it.
+{
+  const api = { moodFrom, breath, blinking, BUSY, WORKING, isLate };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  if (typeof window !== "undefined") window.hikariMood = api;
+}

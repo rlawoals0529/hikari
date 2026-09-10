@@ -12,11 +12,19 @@
   --dim: #8d8da6;
   --edge: rgba(255, 255, 255, 0.08);
   --warn: #f5a94f;
+  /* Consumed by the shader's fault panel. It was read and never defined, so it always
+     took its fallback and no theme could reach it. */
+  --err: #ff6b6b;
   --radius: 16px;
+
+  /* Type, for the same reason. The companion asks for both of these and neither existed,
+     so a theme could change every colour on the desktop and not one letterform. */
+  --font-body: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; background: transparent; overflow: hidden;
-  font: 13px/1.35 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  font: 13px/1.35 var(--font-body);
   color: var(--fg); user-select: none; -webkit-font-smoothing: antialiased; }
 .panel { height: 100%; background: var(--panel); border: 1px solid var(--edge);
   border-radius: var(--radius); backdrop-filter: blur(22px) saturate(150%);

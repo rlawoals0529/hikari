@@ -1,22 +1,55 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
 const {
-  PRELUDE_LINES, hexToVec3, buildSource, remapErrors, formatErrors, uniformsFrom,
+  PRELUDE_LINES, parseColour, buildSource, remapErrors, formatErrors, uniformsFrom,
 } = require("../src/lib/glsl.js");
 
-test("hexToVec3 reads both long and short form", () => {
-  assert.deepStrictEqual(hexToVec3("#ffffff"), [1, 1, 1]);
-  assert.deepStrictEqual(hexToVec3("000000"), [0, 0, 0]);
-  assert.deepStrictEqual(hexToVec3("#fff"), [1, 1, 1]);
-  assert.deepStrictEqual(hexToVec3("  #FF0000 "), [1, 0, 0]);
+test("parseColour reads hex in both long and short form", () => {
+  assert.deepStrictEqual(parseColour("#ffffff"), [1, 1, 1]);
+  assert.deepStrictEqual(parseColour("000000"), [0, 0, 0]);
+  assert.deepStrictEqual(parseColour("#fff"), [1, 1, 1]);
+  assert.deepStrictEqual(parseColour("  #FF0000 "), [1, 0, 0]);
 });
 
 test("a colour it cannot read is null, never black", () => {
   // Black is a colour a palette might legitimately want, so it cannot double as the
   // failure value. Silently rendering an unparsed palette as black is the bug.
-  for (const bad of ["", "nope", "#12345", "#gggggg", null, undefined, "rgb(1,2,3)"]) {
-    assert.strictEqual(hexToVec3(bad), null, `expected null for ${JSON.stringify(bad)}`);
+  for (const bad of ["", "nope", "#12345", "#gggggg", null, undefined, "hsl(1 2)", "oklch(0.5 0.1 200)"]) {
+    assert.strictEqual(parseColour(bad), null, `expected null for ${JSON.stringify(bad)}`);
   }
+});
+
+test("it reads the hsl() a real palette actually emits", () => {
+  // This is the bug that made the fix necessary. getPropertyValue on a custom property
+  // returns the raw token text, not a normalised colour, so a palette written as hsl()
+  // arrived verbatim, parsed as null, and every shader fell back to its hardcoded ground
+  // while its accents came through correctly. It looked deliberate.
+  const bg = parseColour("hsl(247 24.4% 6.5%)");
+  assert.ok(bg, "a palette ground written as hsl must parse");
+  const [r, g, b] = bg;
+  // A dark violet: blue leads, red beats green, and all of it is near the floor.
+  assert.ok(b > r && r > g, `expected a violet, got ${bg.join(", ")}`);
+  assert.ok(Math.max(r, g, b) < 0.1, "6.5% lightness must stay near black");
+});
+
+test("hsl and rgb agree on a colour with a known answer", () => {
+  // Pure red, expressed three ways. Pinned against an external fact rather than against
+  // each other, since two wrong conversions can agree.
+  for (const red of ["hsl(0, 100%, 50%)", "rgb(255, 0, 0)", "rgb(255 0 0)", "rgb(100%, 0%, 0%)"]) {
+    assert.deepStrictEqual(parseColour(red), [1, 0, 0], red);
+  }
+});
+
+test("an alpha is accepted and discarded, because a shader surface is opaque", () => {
+  assert.deepStrictEqual(parseColour("hsla(120 100% 25% / 0.5)"), parseColour("hsl(120 100% 25%)"));
+  assert.deepStrictEqual(parseColour("rgba(255, 0, 0, 0.3)"), [1, 0, 0]);
+});
+
+test("a hue outside 0..360 wraps rather than clamping", () => {
+  // 480 is 120 and -120 is 240. Clamping would silently turn a wrapped hue into a
+  // different colour instead of the one asked for.
+  assert.deepStrictEqual(parseColour("hsl(480 100% 50%)"), parseColour("hsl(120 100% 50%)"));
+  assert.deepStrictEqual(parseColour("hsl(-120 100% 50%)"), parseColour("hsl(240 100% 50%)"));
 });
 
 test("a shader's first line lands exactly PRELUDE_LINES into the built source", () => {

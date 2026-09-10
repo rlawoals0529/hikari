@@ -8,6 +8,5 @@
   "mode": "spectrum",
   "bands": 48,
   "opacity": 0.95,
-  "radius": 16,
   "source": "microphone"
 }

@@ -25,20 +25,65 @@ uniform vec3  u_accent2;
 `;
 
 const PRELUDE_LINES = PRELUDE.split("\n").length - 1;
-
 /**
- * A hex colour as a vec3 of 0..1 floats.
+ * A CSS colour as a vec3 of 0..1 floats.
+ *
+ * This parsed only hex until it was pointed at a real palette. `getPropertyValue` on a
+ * custom property returns the raw token text rather than a normalised colour, so
+ * `--bg: hsl(247 24.4% 6.5%)` arrives verbatim, returned null, and every shader silently
+ * fell back to its hardcoded ground while its accents came through fine. The result looked
+ * deliberate, which is why nobody noticed.
  *
  * Null rather than a black fallback, on purpose: a palette that failed to parse should
  * surface as a fault, not render silently as the darkest colour available.
  */
-function hexToVec3(hex) {
-  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex).trim());
-  if (!m) return null;
-  let h = m[1];
-  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-  const n = parseInt(h, 16);
-  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+function parseColour(input) {
+  const text = String(input).trim();
+
+  const hex = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(text);
+  if (hex) {
+    let h = hex[1];
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    const n = parseInt(h, 16);
+    return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+  }
+
+  // Both the legacy comma form and the modern space-separated one. An alpha is parsed and
+  // discarded, because a shader writes to an opaque surface.
+  const fn = /^(rgba?|hsla?)\(([^)]*)\)$/i.exec(text);
+  if (!fn) return null;
+  const parts = fn[2].trim().split(/\s*[,/]\s*|\s+/).filter(Boolean);
+  if (parts.length < 3) return null;
+
+  if (fn[1].toLowerCase().startsWith("rgb")) {
+    const rgb = parts.slice(0, 3).map((p) => {
+      const n = parseFloat(p);
+      if (!Number.isFinite(n)) return null;
+      // A percentage is out of 100, a bare number out of 255.
+      return p.endsWith("%") ? n / 100 : n / 255;
+    });
+    return rgb.some((n) => n === null) ? null : rgb.map(clamp01);
+  }
+
+  const h = parseFloat(parts[0]);
+  const s = parseFloat(parts[1]);
+  const l = parseFloat(parts[2]);
+  if (![h, s, l].every(Number.isFinite)) return null;
+  return hslToRgb(((h % 360) + 360) % 360, clamp01(s / 100), clamp01(l / 100));
+}
+
+const clamp01 = (n) => Math.min(1, Math.max(0, n));
+
+/** Hue in degrees, saturation and lightness as 0..1. */
+function hslToRgb(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = h / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  const [r1, g1, b1] =
+    hp < 1 ? [c, x, 0] : hp < 2 ? [x, c, 0] : hp < 3 ? [0, c, x]
+    : hp < 4 ? [0, x, c] : hp < 5 ? [x, 0, c] : [c, 0, x];
+  const m = l - c / 2;
+  return [clamp01(r1 + m), clamp01(g1 + m), clamp01(b1 + m)];
 }
 
 /**
@@ -111,6 +156,13 @@ function uniformsFrom(state, audio, view) {
   };
 }
 
-const api = { PRELUDE_LINES, hexToVec3, buildSource, remapErrors, formatErrors, uniformsFrom };
-if (typeof module !== "undefined" && module.exports) module.exports = api;
-if (typeof window !== "undefined") window.hikariGlsl = api;
+// Block-scoped so `api` is not a global. More than one of these files loads into the same
+// page as a classic script -- the shader pulls in glsl and config, the companion mood and
+// config -- and they share one global scope, so a second top-level `const api` is a
+// redeclaration SyntaxError that discards the entire file. The symptom is an undefined
+// `window.hikariGlsl` in a widget that never mentions `api`, which points nowhere near it.
+{
+  const api = { PRELUDE_LINES, parseColour, buildSource, remapErrors, formatErrors, uniformsFrom };
+  if (typeof module !== "undefined" && module.exports) module.exports = api;
+  if (typeof window !== "undefined") window.hikariGlsl = api;
+}
