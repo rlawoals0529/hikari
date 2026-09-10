@@ -1,0 +1,15 @@
+{
+  "name": "media",
+  "anchor": "bottom_left",
+  "width": 380,
+  "height": 214,
+  "margin": 20,
+  "interactive": false,
+  "source": "",
+  "fit": "cover",
+  "opacity": 1,
+  "loop": true,
+  "muted": true,
+  "playbackRate": 1,
+  "radius": 16
+}

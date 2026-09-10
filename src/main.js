@@ -18,10 +18,17 @@ const WIDGET_DIRS = [
 ];
 
 const windows = new Map();
+const manifests = new Map();
 const state = {};
 
 /** Anchors are resolved against the work area, so a taskbar never overlaps a widget. */
 function place(display, manifest) {
+  // A wallpaper covers the whole display, bounds not work area: it belongs *behind* the
+  // taskbar, not beside it.
+  if (manifest.fill === "screen") {
+    const b = display.bounds;
+    return { x: b.x, y: b.y, width: b.width, height: b.height };
+  }
   const { x, y, width: dw, height: dh } = display.workArea;
   const w = manifest.width ?? 300;
   const h = manifest.height ?? 120;
@@ -69,13 +76,24 @@ function createWidget({ id, dir, manifest }) {
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false },
   });
 
-  // "screen-saver" is the level that actually stays above a maximised window; plain
-  // alwaysOnTop loses to fullscreen apps on every platform.
-  win.setAlwaysOnTop(true, "screen-saver");
+  if (manifest.layer === "wallpaper") {
+    // Behind everything, and out of the alt-tab and window lists.
+    win.setAlwaysOnTop(false);
+    win.setIgnoreMouseEvents(true, { forward: true });
+    if (process.platform === "darwin") win.setWindowButtonVisibility?.(false);
+  } else {
+    // "screen-saver" is the level that actually stays above a maximised window; plain
+    // alwaysOnTop loses to fullscreen apps on every platform.
+    win.setAlwaysOnTop(true, "screen-saver");
+  }
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   // A non-interactive widget must not eat clicks meant for the desktop behind it.
   if (!manifest.interactive) win.setIgnoreMouseEvents(true, { forward: true });
+
+  // A widget reads its own manifest through hikari.config(). Keyed by webContents id so
+  // two widgets from the same folder cannot read each other's settings.
+  manifests.set(win.webContents.id, manifest);
 
   win.loadFile(path.join(dir, "index.html"));
   win.once("ready-to-show", () => win.show());
@@ -107,6 +125,7 @@ function startProviders() {
 app.whenReady().then(() => {
   ipcMain.handle("hikari:media", (_e, action) => control(action));
   ipcMain.handle("hikari:state", () => state);
+  ipcMain.handle("hikari:config", (e) => manifests.get(e.sender.id) ?? {});
 
   const widgets = discover();
   if (widgets.length === 0) {

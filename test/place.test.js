@@ -12,7 +12,7 @@ Module._load = function (request, parent, isMain) {
       app: { getPath: () => "/nonexistent-home", whenReady: () => ({ then() {} }), on() {} },
       BrowserWindow: class {},
       ipcMain: { handle() {} },
-      screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }) },
+          screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }) },
     };
   }
   return origLoad.apply(this, arguments);
@@ -61,5 +61,21 @@ test("defaults apply when a manifest omits everything", () => {
 
 test("discover finds the bundled widgets and skips a disabled one", () => {
   const found = discover().map((w) => w.id).sort();
-  assert.deepStrictEqual(found, ["clock", "nowplaying", "stats"]);
+  assert.deepStrictEqual(found, ["clock", "media", "nowplaying", "stats"]);
+});
+
+test("fill:screen covers the whole display, not the work area", () => {
+  // A wallpaper belongs behind the taskbar, so it must ignore the work area inset.
+  const r = place({ bounds: { x: 0, y: 0, width: 1920, height: 1080 },
+                    workArea: { x: 0, y: 40, width: 1920, height: 1040 } },
+                  { fill: "screen" });
+  assert.deepStrictEqual(r, { x: 0, y: 0, width: 1920, height: 1080 });
+});
+
+test("fill:screen respects a second monitor's origin", () => {
+  const r = place({ bounds: { x: 1920, y: -200, width: 1280, height: 720 },
+                    workArea: { x: 1920, y: -160, width: 1280, height: 680 } },
+                  { fill: "screen" });
+  assert.strictEqual(r.x, 1920);
+  assert.strictEqual(r.y, -200);
 });

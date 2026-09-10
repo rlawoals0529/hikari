@@ -1,0 +1,78 @@
+<!doctype html><meta charset="utf-8">
+<link rel="stylesheet" href="../theme.css">
+<style>
+  html, body { background: transparent; }
+  .stage { position: fixed; inset: 0; overflow: hidden; }
+  .stage img, .stage video { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .fit-cover img,   .fit-cover video   { object-fit: cover; }
+  .fit-contain img, .fit-contain video { object-fit: contain; }
+  .fit-fill img,    .fit-fill video    { object-fit: fill; }
+  /* The empty and error states need their own surface: the stage is transparent, so
+     without one the text floats over the desktop and reads as a broken widget. */
+  /* place-items on the container would make every text node and <code> its own grid row,
+     which spreads a one-line message down the whole widget. The message gets one child. */
+  .empty { position: fixed; inset: 0; display: grid; place-items: center; padding: 18px;
+           overflow: hidden; background: var(--panel); border: 1px solid var(--edge);
+           border-radius: inherit; backdrop-filter: blur(18px); }
+  .empty > span { text-align: center; color: var(--dim); font-size: 12px; line-height: 1.6; }
+  .empty code { display: inline-block; max-width: 100%; overflow-wrap: anywhere; color: var(--fg); }
+</style>
+<div class="stage" id="stage"></div>
+<script>
+  /**
+   * Plays a GIF, APNG, WebP, MP4 or WebM. Chooses <video> or <img> by extension, because a
+   * <video> cannot play a GIF and an <img> cannot loop or rate-control a video.
+   */
+  const VIDEO = /\.(mp4|webm|ogv|mov|m4v)(\?|#|$)/i;
+
+  function mount(cfg) {
+    const stage = document.getElementById("stage");
+    const src = (cfg.source || "").trim();
+    stage.className = "stage fit-" + (cfg.fit || "cover");
+    stage.style.opacity = cfg.opacity ?? 1;
+    stage.style.borderRadius = (cfg.radius ?? 16) + "px";
+
+    if (!src) {
+      stage.innerHTML =
+        '<div class="empty"><span>Set <code>source</code> in <code>widget.json</code></span></div>';
+      return;
+    }
+
+    if (VIDEO.test(src)) {
+      const v = document.createElement("video");
+      v.src = src;
+      v.autoplay = true;
+      v.loop = cfg.loop !== false;
+      // Muted is the default and it is load-bearing: a browser refuses to autoplay audio,
+      // so an unmuted video silently never starts.
+      v.muted = cfg.muted !== false;
+      v.playsInline = true;
+      v.playbackRate = cfg.playbackRate ?? 1;
+      v.addEventListener("error", () => {
+        stage.innerHTML = '<div class="empty"><span>Could not load<br><code>' + src + "</code></span></div>";
+      });
+      stage.appendChild(v);
+    } else {
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = "";
+      img.addEventListener("error", () => {
+        stage.innerHTML = '<div class="empty"><span>Could not load<br><code>' + src + "</code></span></div>";
+      });
+      stage.appendChild(img);
+    }
+  }
+
+  // The host hands the manifest to the widget; the preview passes a query string instead.
+  const q = new URLSearchParams(location.search);
+  if (window.hikari?.config) {
+    window.hikari.config().then(mount);
+  } else {
+    mount({
+      source: q.get("source") || "",
+      fit: q.get("fit") || "cover",
+      opacity: Number(q.get("opacity") ?? 1),
+      radius: Number(q.get("radius") ?? 16),
+    });
+  }
+</script>

@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld("hikari", {
     ipcRenderer.invoke("hikari:state").then(fn);
     return () => ipcRenderer.off("hikari:state", handler);
   },
+  /** This widget's own entry from its widget.json. */
+  config: () => ipcRenderer.invoke("hikari:config"),
   media: {
     playPause: () => ipcRenderer.invoke("hikari:media", "playpause"),
     next: () => ipcRenderer.invoke("hikari:media", "next"),
