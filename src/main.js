@@ -16,6 +16,7 @@ const { widgetConfig, providerConfig, providerInterval, MIN_INTERVAL_MS } = requ
 const { plan } = require("./lib/hotkeys");
 const { granted } = require("./lib/grants");
 const { changed } = require("./lib/watch");
+const { statePath, readState, writable } = require("./lib/store");
 
 /**
  * Where settings, the user's theme layer and the user's own widgets live.
@@ -442,6 +443,81 @@ app.whenReady().then(() => {
         return "";
       }
     });
+  });
+
+  /**
+   * A widget's own state, read and written by the host.
+   *
+   * **A widget never names a file.** There is no path parameter, and there is deliberately
+   * no way to add one: the host resolves the *asking* widget's id to one file under
+   * `~/.hikari/state/`. So there is nothing to traverse out of, and one widget cannot reach
+   * another's data because it cannot express another's name. `src/lib/store.js` is the
+   * check on that id and it is mostly refusals.
+   *
+   * Gated on `"storage": true` in the manifest, like the clipboard, and checked the same
+   * way: against the manifest of the window the message came from.
+   */
+  ipcMain.handle("hikari:store:get", (e) => {
+    const manifest = manifests.get(e.sender.id);
+    if (!granted(manifest, "storage")) {
+      const msg = 'this widget did not ask to store anything. Add "storage": true to its widget.json.';
+      console.error(`[hikari] refused a state read: ${msg}`);
+      throw new Error(msg);
+    }
+    const where = statePath(HIKARI_HOME, manifest?.name);
+    if (where.error) throw new Error(where.error);
+    if (!fs.existsSync(where.path)) return null;
+    try {
+      return readState(fs.readFileSync(where.path, "utf8"));
+    } catch (err) {
+      // Unreadable is not the same as empty, and a widget that cannot tell them apart would
+      // helpfully overwrite a file it failed to read.
+      throw new Error(`could not read ${path.basename(where.path)}: ${err.message}`);
+    }
+  });
+
+  ipcMain.handle("hikari:store:set", (e, value) => {
+    const manifest = manifests.get(e.sender.id);
+    if (!granted(manifest, "storage")) {
+      const msg = 'this widget did not ask to store anything. Add "storage": true to its widget.json.';
+      console.error(`[hikari] refused a state write: ${msg}`);
+      throw new Error(msg);
+    }
+    const where = statePath(HIKARI_HOME, manifest?.name);
+    if (where.error) throw new Error(where.error);
+
+    const ready = writable(value);
+    if (ready.error) throw new Error(ready.error);
+
+    fs.mkdirSync(where.dir, { recursive: true });
+
+    /**
+     * Written to a temporary file and renamed over the target.
+     *
+     * `rename` within one directory is atomic, so a reader sees either the whole old file or
+     * the whole new one. Writing in place is not: a crash or a full disk halfway through
+     * leaves a truncated file, which parses as invalid JSON and reads as an empty list. That
+     * is the one failure this widget must not have, because the thing it would silently
+     * discard is the only copy.
+     *
+     * The temporary name carries the process id so two hosts cannot collide on it.
+     */
+    const tmp = `${where.path}.${process.pid}.tmp`;
+    try {
+      fs.writeFileSync(tmp, ready.text, "utf8");
+      fs.renameSync(tmp, where.path);
+    } catch (err) {
+      // Cleaned up, or the state directory fills with orphaned temporary files that nobody
+      // will ever look at.
+      try {
+        fs.rmSync(tmp, { force: true });
+      } catch {
+        // Nothing useful to do about a failed cleanup, and throwing here would replace the
+        // real error with a worse one.
+      }
+      throw new Error(`could not write ${path.basename(where.path)}: ${err.message}`);
+    }
+    return true;
   });
 
   ipcMain.handle("hikari:media", (_e, action) => control(action));

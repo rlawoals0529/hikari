@@ -456,6 +456,51 @@ page, the app's own scripts run, the clipboard reaches its input, and a `fetch` 
 the overlay is refused with `connect-src` named as the directive. A tool that promises it
 cannot reach the network keeps that promise here too.
 
+## A widget that remembers, and what it is not allowed to do
+
+The to-do list is the first widget that writes anything, and the write path is the whole of
+the interesting part. It asks for one capability:
+
+```json
+{ "name": "todo", "interactive": true, "storage": true }
+```
+
+```js
+const list = await hikari.store.get();      // null the first time
+await hikari.store.set({ items: list });    // replaces the whole value
+```
+
+**Notice what is missing: there is no filename, and no way to supply one.** The obvious
+design is an IPC call that takes a path, and it hands every widget the ability to write
+anywhere the app can reach, which for a wallpaper shader is an absurd amount of authority.
+Instead the host resolves the *asking* widget's own id to one file under
+`~/.hikari/state/`. A widget cannot write anywhere else, and cannot read another widget's
+data, because it cannot express another widget's name.
+
+The id still has to be checked, because it comes from a `widget.json`, and a widget that
+declares `"name": "../escaped"` is a thing a person can write. So it is an allowlist,
+lowercase letters and digits and dashes, not a denylist of the traversal tricks somebody has
+thought of. Also refused: uppercase, because `Todo` and `todo` are one file on macOS and
+two on Linux, so a widget's state would follow it to one machine and not another. And
+Windows device names, because `con.json` cannot exist there and the failure arrives as a
+permission error nobody would connect to a widget called `con`.
+
+**Writes are atomic.** The value goes to a temporary file and is renamed over the target,
+which within one directory is atomic, so a reader sees either the whole old file or the
+whole new one. Writing in place is not: a crash or a full disk halfway through leaves a
+truncated file, and truncated JSON reads as an empty list. That is the one failure this
+widget must not have, because the thing it would quietly discard is the only copy.
+
+Verified in the real host: a widget with the capability wrote to
+`~/.hikari/state/probe-store.json` and read it back, one without it was refused with the
+reason, and one declaring `"name": "../escaped"` was refused with nothing written anywhere
+outside `state/` and no temporary file left behind.
+
+Two smaller decisions worth knowing. The list is capped at 200 items and 200 characters
+each, so one entry cannot fill the widget and a runaway loop cannot fill the disk. And the
+widget says **"Not saving"** with the reason if a write fails, rather than accepting edits
+it is quietly dropping.
+
 ## Settings live outside the repo
 
 `widget.json` is the widget author's defaults. Yours go in `~/.hikari/config.json`, keyed

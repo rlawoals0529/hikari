@@ -1,0 +1,9 @@
+{
+  "name": "todo",
+  "anchor": "top_left",
+  "offsetY": 400,
+  "width": 260,
+  "height": 260,
+  "interactive": true,
+  "storage": true
+}

@@ -26,8 +26,8 @@ function browserLibs() {
 
 test("every browser-loadable library is present, so this test cannot pass by finding none", () => {
   const libs = browserLibs();
-  assert.ok(libs.length >= 3, `expected at least 3 browser libs, found ${libs.join(", ")}`);
-  for (const f of ["config.js", "glsl.js", "mood.js"]) assert.ok(libs.includes(f), `${f} missing`);
+  assert.ok(libs.length >= 4, `expected at least 3 browser libs, found ${libs.join(", ")}`);
+  for (const f of ["config.js", "glsl.js", "mood.js", "todo.js"]) assert.ok(libs.includes(f), `${f} missing`);
 });
 
 test("loading them all into one scope does not redeclare anything", () => {
@@ -44,5 +44,5 @@ test("each library still exports through window when there is one", () => {
   const source = libs.map((f) => fs.readFileSync(path.join(LIB, f), "utf8")).join("\n");
   const win = {};
   new Function("window", source)(win);
-  assert.deepEqual(Object.keys(win).sort(), ["hikariConfig", "hikariGlsl", "hikariMood"]);
+  assert.deepEqual(Object.keys(win).sort(), ["hikariConfig", "hikariGlsl", "hikariMood", "hikariTodo"]);
 });

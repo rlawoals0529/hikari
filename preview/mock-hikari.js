@@ -129,6 +129,33 @@
   window.hikari = {
     subscribe(fn) { subs.add(fn); fn(snapshot()); return () => subs.delete(fn); },
     config: () => Promise.resolve(window.hikariConfig.fromQuery(location.search)),
+    /**
+     * State, kept in memory for the length of the page.
+     *
+     * Not `localStorage`, and that is deliberate. A widget built here would then behave
+     * differently from one on the desktop in the one way that matters: whether it remembers
+     * across a reload. In memory it forgets, and a preview that forgets is honest about
+     * being a preview. `?state=...` seeds it, so a widget can be built against a list.
+     */
+    store: (() => {
+      let value = (() => {
+        const seed = window.hikariConfig.fromQuery(location.search).state;
+        if (typeof seed !== "string") return null;
+        try {
+          return JSON.parse(seed);
+        } catch {
+          console.warn("[preview] ?state= is not valid JSON, starting empty");
+          return null;
+        }
+      })();
+      return {
+        get: () => Promise.resolve(value),
+        set: (next) => {
+          value = next;
+          return Promise.resolve(true);
+        },
+      };
+    })(),
     // Nothing changes settings in a browser, so this is a subscription that never fires.
     // It exists so a widget can call it without asking which host it is running in.
     onConfigChange: () => () => {},

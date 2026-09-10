@@ -66,6 +66,22 @@ contextBridge.exposeInMainWorld("hikari", {
   clipboard: {
     readText: () => ipcRenderer.invoke("hikari:clipboard"),
   },
+  /**
+   * This widget's own stored state. Rejects for a widget that did not ask for it.
+   *
+   * Notice what is missing: there is no filename, and no way to supply one. The host
+   * resolves this widget's own id to one file under `~/.hikari/state/`, so a widget cannot
+   * write anywhere else and cannot read another widget's data, because it cannot express
+   * another widget's name.
+   *
+   * `set` replaces the whole value rather than merging. A merge would need the host to
+   * understand the shape, and the host understanding a widget's data is how a widget host
+   * turns into a framework.
+   */
+  store: {
+    get: () => ipcRenderer.invoke("hikari:store:get"),
+    set: (value) => ipcRenderer.invoke("hikari:store:set", value),
+  },
   media: {
     playPause: () => ipcRenderer.invoke("hikari:media", "playpause"),
     next: () => ipcRenderer.invoke("hikari:media", "next"),

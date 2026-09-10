@@ -16,7 +16,15 @@
  * looked for in the manifest.
  */
 
-const CAPABILITIES = new Set(["clipboard"]);
+/**
+ * Every capability a widget can ask for.
+ *
+ * `storage` is not a general write capability, and the distinction is the whole design.
+ * There is no path parameter anywhere in it: the host resolves the asking widget's own id
+ * to one file under `~/.hikari/state/`, so a widget cannot name a file and cannot reach
+ * another widget's data because it cannot express another widget's name.
+ */
+const CAPABILITIES = new Set(["clipboard", "storage"]);
 
 /**
  * @param {object | undefined} manifest  the asking widget's own manifest

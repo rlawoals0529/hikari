@@ -43,4 +43,23 @@ test("prototype keys are not capabilities", () => {
 
 test("the capability list is not empty, so these tests cannot pass by covering nothing", () => {
   assert.ok(CAPABILITIES.has("clipboard"));
+  assert.ok(CAPABILITIES.has("storage"));
+});
+
+test("storage is a capability, and it is not a licence to write anywhere", () => {
+  // The check is the same shape as the clipboard's. What makes storage safe is not this
+  // function, it is that there is no path parameter anywhere in the call it guards: see
+  // src/lib/store.js.
+  assert.equal(granted({ storage: true }, "storage"), true);
+  assert.equal(granted({ storage: "true" }, "storage"), false);
+  assert.equal(granted({ clipboard: true }, "storage"), false);
+  assert.equal(granted({}, "storage"), false);
+  assert.equal(granted(undefined, "storage"), false);
+});
+
+test("asking for one capability does not grant the other", () => {
+  // A widget that stores a list has no business reading the clipboard, and the other way
+  // round. Two names, two answers.
+  assert.equal(granted({ storage: true }, "clipboard"), false);
+  assert.equal(granted({ clipboard: true }, "storage"), false);
 });

@@ -74,6 +74,7 @@ test("discover finds the bundled widgets and skips a disabled one", () => {
     "nowplaying",
     "shader",
     "stats",
+    "todo",
     "weather",
   ]);
 });
