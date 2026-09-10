@@ -1,6 +1,7 @@
 {
   "name": "hikari",
   "version": "0.1.0",
+  "private": true,
   "description": "Desktop widgets written in HTML, CSS and TypeScript. Transparent, always-on-top, driven by live system providers. No window manager required.",
   "main": "src/main.js",
   "type": "commonjs",
