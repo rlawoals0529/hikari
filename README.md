@@ -68,6 +68,51 @@ announces itself otherwise:
 A shortcut with no modifier is refused outright. `"hotkey": "K"` would take that key away
 from every application on the machine, including the one in front of you.
 
+### Shortcuts of your own
+
+A `hotkey` in a `widget.json` is the widget author's choice. This is yours:
+
+```json
+{
+  "shortcuts": {
+    "Alt+Space": "toggle:decoder",
+    "CommandOrControl+Alt+S": "launch:steam",
+    "Alt+R": "refresh",
+    "Alt+H": "hideAll"
+  }
+}
+```
+
+| Action | |
+| --- | --- |
+| `toggle:<widget>` | show or hide it |
+| `reload:<widget>` | reload that one window |
+| `launch:<dock entry>` | start something in your dock |
+| `refresh` | read every provider now, rather than on its next tick |
+| `hideAll` | put every visible widget away |
+
+**An action is a verb and a name, never a command.** There is no shell string, no path and
+no argument list, so a shortcut cannot start something you have not already configured
+somewhere else. `launch:steam` goes through the dock's own lookup, so it reaches exactly
+what a dock button would and nothing more.
+
+**Your map beats a widget's own hotkey**, and the widget is told rather than silently
+losing its key. There are four ways a shortcut ends up unbound and none of them announces
+itself, so all four are printed at startup:
+
+```
+shortcut "K" is not usable: a global shortcut needs at least one modifier
+shortcut "Alt+X": "togle" is not an action. One of: toggle, reload, launch, refresh, hideAll
+shortcut "Alt+Y" names widget "nosuchwidget", which does not exist. Known: clock, decoder, todo
+widget "decoder" wants Alt+Space, but your shortcuts use that key for "launch:steam". Yours wins.
+```
+
+A shortcut naming something that does not exist is refused at startup rather than bound and
+failing when pressed, because a key that does nothing is indistinguishable from a broken
+app. And `refresh:weather` is refused rather than having its target dropped: somebody who
+wrote that wanted one provider refreshed, and quietly refreshing all of them is not what
+they asked for.
+
 ### Clipboard access is asked for, and refused by default
 
 Until this, the worst a widget could do was skip a track. Reading the clipboard is a

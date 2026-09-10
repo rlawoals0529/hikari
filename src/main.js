@@ -18,6 +18,7 @@ const { granted } = require("./lib/grants");
 const { changed } = require("./lib/watch");
 const { statePath, readState, writable } = require("./lib/store");
 const { readEntries, resolveTarget } = require("./lib/launch");
+const { readShortcuts, merge: mergeShortcuts } = require("./lib/shortcuts");
 
 /**
  * Where settings, the user's theme layer and the user's own widgets live.
@@ -278,26 +279,122 @@ function toggle(id) {
  * returning false. Ignoring that return is the classic bug in this feature: nothing
  * happens, nothing is logged, and the evening goes on the wrong thing.
  */
+/**
+ * Do what a shortcut says.
+ *
+ * A verb and a name, resolved here. Nothing that reaches this function came from a
+ * renderer: it came from a `widget.json` or from `~/.hikari/config.json`, both of which the
+ * user owns, and `launch` still goes through the dock's own lookup rather than round the
+ * side of it.
+ */
+async function perform(binding) {
+  const { verb, target } = binding;
+  if (verb === "toggle") return toggle(target);
+
+  if (verb === "reload") {
+    const entry = registry.get(target);
+    if (entry && !entry.win.isDestroyed()) entry.win.reload();
+    return;
+  }
+
+  if (verb === "refresh") {
+    // Restarting the pollers reads every provider immediately, which is what somebody
+    // pressing this wants: the numbers now, not on the next tick.
+    stopProviders?.();
+    stopProviders = startProviders();
+    console.log("[hikari] refreshed every provider");
+    return;
+  }
+
+  if (verb === "hideAll") {
+    let hidden = 0;
+    for (const win of windows.values()) {
+      if (!win.isDestroyed() && win.isVisible()) {
+        win.hide();
+        hidden++;
+      }
+    }
+    console.log(`[hikari] hid ${hidden} widget(s)`);
+    return;
+  }
+
+  if (verb === "launch") {
+    // Through the same resolve the dock uses, so a shortcut cannot reach anything a dock
+    // button could not. One lookup, one allowlist, one place to be wrong.
+    const { entries } = readEntries(userConfig.dock);
+    const resolved = resolveTarget(entries, target);
+    if (resolved.error) {
+      console.error(`[hikari] shortcut refused: ${resolved.error}`);
+      return;
+    }
+    try {
+      if (resolved.kind === "path") {
+        const failure = await shell.openPath(resolved.value);
+        if (failure) console.error(`[hikari] could not open ${resolved.label}: ${failure}`);
+      } else {
+        await shell.openExternal(resolved.value);
+      }
+      console.log(`[hikari] launched "${resolved.label}"`);
+    } catch (e) {
+      console.error(`[hikari] could not launch ${resolved.label}: ${e.message}`);
+    }
+    return;
+  }
+
+  // Unreachable while the action list and this switch agree, and said out loud rather than
+  // ignored because the way they stop agreeing is somebody adding a verb to one of them.
+  console.error(`[hikari] no handler for the "${verb}" action`);
+}
+
+/**
+ * Bind every global shortcut: the ones widgets ask for and the ones you defined.
+ *
+ * Merged before anything is registered, so a widget hotkey and a shortcut competing for one
+ * accelerator is caught here rather than by whichever happened to register first. That is
+ * the failure worth catching, because the loser is silent: the key works, and does the
+ * other thing.
+ *
+ * A global shortcut that quietly does nothing is the whole failure mode of this feature, so
+ * every reason one is unbound is printed. There are four now, and none announces itself:
+ * a malformed accelerator, two things wanting one key, a name that does not exist, and the
+ * accelerator already belonging to another application.
+ */
 function applyHotkeys(widgets) {
   globalShortcut.unregisterAll();
-  const { bindings, problems } = plan(widgets);
 
-  for (const p of problems) {
+  const fromWidgets = plan(widgets);
+  for (const p of fromWidgets.problems) {
     console.error(`[hikari] ${p.id}: hotkey ${JSON.stringify(p.accelerator)} not bound, ${p.reason}`);
   }
 
+  const { entries: dockEntries } = readEntries(userConfig.dock);
+  const fromConfig = readShortcuts(
+    userConfig.shortcuts,
+    widgets.map((w) => w.id),
+    dockEntries.map((e) => e.id),
+  );
+  for (const p of fromConfig.problems) console.error(`[hikari] ${p}`);
+
+  const { bindings, problems } = mergeShortcuts(fromWidgets.bindings, fromConfig.bindings);
+  for (const p of problems) console.error(`[hikari] ${p}`);
+
   for (const b of bindings) {
+    const what = b.verb === "toggle" && b.from === "widget" ? b.target : `${b.verb}${b.target ? `:${b.target}` : ""}`;
     let won = false;
     try {
-      won = globalShortcut.register(b.accelerator, () => toggle(b.id));
+      won = globalShortcut.register(b.accelerator, () => {
+        // Errors inside a shortcut callback have nowhere to go, so they are caught here
+        // rather than becoming an unhandled rejection nobody sees.
+        Promise.resolve(perform(b)).catch((e) => console.error(`[hikari] ${what} failed: ${e.message}`));
+      });
     } catch (e) {
       // The accelerator passed our parser and Electron still refused it, which means the
       // two disagree. Worth the noise: it is a bug here, not in the user's config.
-      console.error(`[hikari] ${b.id}: Electron rejected "${b.accelerator}": ${e.message}`);
+      console.error(`[hikari] Electron rejected "${b.accelerator}": ${e.message}`);
       continue;
     }
-    if (won) console.log(`[hikari] ${b.id}: ${b.accelerator}`);
-    else console.error(`[hikari] ${b.id}: "${b.accelerator}" is already taken by another application, so it does nothing`);
+    if (won) console.log(`[hikari] ${b.accelerator} -> ${what}`);
+    else console.error(`[hikari] "${b.accelerator}" is already taken by another application, so ${what} does nothing`);
   }
 }
 
