@@ -1,0 +1,26 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ matrix.node }}" }
+      - run: npm test
+      - name: Every widget manifest is valid JSON
+        run: |
+          for f in widgets/*/widget.json; do
+            node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" || exit 1
+          done
+      - name: Host and widget scripts parse
+        run: |
+          node --check src/main.js
+          node --check src/preload.js
+          node --check src/providers/index.js
+          node --check src/providers/media.js
