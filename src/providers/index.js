@@ -12,11 +12,14 @@
  * widget and there is no single widget to ask. `intervalMs` in that block overrides the
  * provider's own, floored so a typo cannot spin a core.
  *
- * None of the providers below need config yet. The seam exists because a latitude, a
- * calendar URL or a units preference has nowhere else to arrive from.
+ * `weather` is the first one that needs it: a latitude and a longitude, or a place name,
+ * have nowhere else to arrive from. It also carries the pattern for the ones after it,
+ * which is that the fetch lives in the provider and every decision about the response
+ * lives in a pure module beside it.
  */
 const os = require("node:os");
 const { media } = require("./media");
+const { weather } = require("./weather");
 
 let lastCpu = null;
 
@@ -68,6 +71,7 @@ const providers = [
     },
   },
   media,
+  weather,
 ];
 
 module.exports = { providers, cpuUsage };

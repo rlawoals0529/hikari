@@ -1,0 +1,93 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hikari - weather</title>
+<!-- Under the host these come from the preload bridge. In a browser the mock stands in,
+     and it needs the shared config module to read the query string. -->
+<script>if(!window.hikari)document.write('<script src="../../src/lib/config.js"><\/script><script src="../../preview/mock-hikari.js"><\/script>')</script>
+<link rel="stylesheet" href="../theme.css">
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; background: transparent; }
+  #card {
+    height: 100%; box-sizing: border-box;
+    padding: 16px 18px;
+    display: grid; align-content: space-between;
+    background: var(--panel); border: 1px solid var(--edge); border-radius: inherit;
+    backdrop-filter: blur(18px);
+    font: 12px/1.4 var(--font-body, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif);
+    color: var(--fg);
+  }
+  /* The temperature is the whole reason this widget exists, so it gets the size. Tabular
+     figures because it changes and a shifting number reads as a glitch. */
+  .now { display: flex; align-items: baseline; gap: 8px; }
+  .temp { font-size: 38px; font-weight: 300; line-height: 1; font-variant-numeric: tabular-nums; }
+  .deg { font-size: 15px; color: var(--dim); }
+  .cond { color: var(--dim); text-transform: lowercase; }
+  .range { color: var(--dim); font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+  .place { color: var(--dim); font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; }
+
+  /* Unknown has to look different from a reading, not like a reading of nothing. */
+  .unknown { color: var(--dim); font-size: 12px; line-height: 1.55; }
+  .unknown b { color: var(--warn, #f5a94f); font-weight: 600; }
+  /* A stale reading is shown, and marked. Hiding it would be worse; showing it unmarked
+     would be a lie. */
+  .stale .temp, .stale .range { opacity: .55; }
+  .age { color: var(--warn, #f5a94f); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+</style>
+<div id="card"><div class="unknown">Waiting for the first reading.</div></div>
+<script>
+(async () => {
+  const cfg = (await window.hikari.config()) ?? {};
+  const card = document.getElementById("card");
+  window.hikari.onConfigChange?.(() => location.reload());
+
+  const round = (n) => (n === null || n === undefined ? null : Math.round(n));
+  const label = cfg.label ?? null;
+
+  /** How old, in the roughest terms that are still true. */
+  function ago(ms) {
+    const mins = Math.floor(ms / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins} min old`;
+    const hours = Math.floor(mins / 60);
+    return `${hours} hour${hours === 1 ? "" : "s"} old`;
+  }
+
+  function render(w) {
+    // No reading, or one too old to mean anything. The reason is shown rather than a dash,
+    // because "set a latitude" and "the network is down" need different responses from you
+    // and a widget that says neither is a widget you cannot act on.
+    if (!w || w.available !== true) {
+      card.className = "";
+      card.innerHTML =
+        '<div class="unknown"><b>No reading.</b><br>' +
+        (w && w.reason ? String(w.reason).replace(/</g, "&lt;") : "The weather provider has not reported yet.") +
+        "</div>";
+      return;
+    }
+
+    const unit = w.units === "imperial" ? "F" : "C";
+    const temp = round(w.temperature);
+    const high = round(w.high);
+    const low = round(w.low);
+
+    card.className = w.freshness === "stale" ? "stale" : "";
+    card.innerHTML = `
+      <div class="place">${(label ?? w.timezone ?? "").split("/").pop().replace(/_/g, " ")}</div>
+      <div class="now">
+        <span class="temp">${temp === null ? "--" : temp}</span>
+        <span class="deg">&deg;${unit}</span>
+        <span class="cond">${w.condition ?? ""}</span>
+      </div>
+      <div class="range">
+        ${high === null || low === null ? "" : `${high}&deg; / ${low}&deg;`}
+        ${w.feelsLike !== null && temp !== null && Math.abs(w.feelsLike - w.temperature) >= 2
+          ? `&middot; feels ${round(w.feelsLike)}&deg;`
+          : ""}
+      </div>
+      ${w.freshness === "stale" ? `<div class="age">${ago(Date.now() - w.takenAt)}</div>` : ""}
+    `;
+  }
+
+  window.hikari.subscribe((state) => render(state.weather));
+})();
+</script>

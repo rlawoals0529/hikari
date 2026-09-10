@@ -264,6 +264,51 @@ browser tab, VLC.
 | macOS | AppleScript against the running player |
 | Linux | MPRIS over D-Bus, via `playerctl` |
 
+## Weather, with no key and no signup
+
+[Open-Meteo](https://open-meteo.com) needs no account and no API key, which is the only
+reason this widget exists. A widget whose setup begins "register for an API key" is a widget
+nobody turns on, and a key in a config file is a secret waiting to be committed by accident.
+
+```json
+{ "providers": { "weather": { "place": "Reykjavik", "units": "metric" } } }
+{ "providers": { "weather": { "latitude": 51.5074, "longitude": -0.1278 } } }
+```
+
+**There is no default location.** A default would put somebody else's weather on your desktop
+and look like it had worked, which is the worst way for a setting to be wrong. With nothing
+set the widget says what to set, and goes on saying it.
+
+### A stale reading is worse than no reading
+
+Nineteen degrees from four hours ago, shown as though it were current, is a wrong answer with
+nothing on screen to say it is wrong. So the age travels with the value:
+
+| Age | What you see |
+| --- | --- |
+| under an hour | the reading |
+| one to three hours | the reading, dimmed, with how old it is |
+| over three hours | no number at all, and the reason |
+
+A reading dated in the future is treated as expired rather than fresh, because that is a
+clock problem and not a good reading.
+
+**A failed refresh does not discard a good reading.** The last one survives until it is
+genuinely too old, and the error travels beside it, because "the network is down" is more
+use than "this is old" when both are true.
+
+### Two bugs this found, both of the same kind
+
+Both were the repo's one rule broken, and both were caught by a test rather than by reading:
+
+- **`Number(null)` is 0.** A helper that asked only `Number.isFinite` reported a missing
+  daily high as zero degrees. `Number("")` and `Number([])` are 0 as well.
+- **A reading is only valid for the place it was taken.** Changing `place` to something that
+  could not be resolved left the previous reading in the cache, and the widget showed
+  Reykjavik's temperature, marked fresh, beside the words "no place called ...". A real,
+  recent number about somewhere else entirely. The cache is keyed on location now, and two
+  missing coordinates do not match a genuine reading at 0, 0 off the coast of Ghana.
+
 ## Providers
 
 `cpu` · `memory` · `host` · `date` · `media`

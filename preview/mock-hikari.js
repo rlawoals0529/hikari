@@ -19,6 +19,24 @@
   ];
   const jitter = (v, a, lo, hi) => Math.max(lo, Math.min(hi, v + (Math.random() - 0.5) * a));
 
+  /**
+   * Fresh, stale and unknown. A preview that only ever shows the happy state is not one,
+   * and for this widget the interesting half is what it does when it does not know.
+   *
+   * `?weather=stale` pins one, because otherwise every frame on the preview page runs its
+   * own mock from tick one and they all show the same state.
+   */
+  const WEATHER = [
+    { available: true, freshness: "fresh", takenAt: Date.now(), temperature: 18.7,
+      feelsLike: 16.4, humidity: 59, windSpeed: 16.9, isDay: true, code: 3,
+      condition: "overcast", high: 20.3, low: 14, units: "metric", timezone: "Europe/London" },
+    { available: true, freshness: "stale", takenAt: Date.now() - 95 * 60 * 1000,
+      temperature: 2.1, feelsLike: -3.4, humidity: 81, windSpeed: 34, isDay: false, code: 73,
+      condition: "snow", high: 3, low: -2, units: "metric", timezone: "America/Toronto" },
+    { available: false, freshness: "expired",
+      reason: 'set "latitude" and "longitude", or "place", under providers.weather in ~/.hikari/config.json' },
+  ];
+
   function snapshot() {
     tick++;
     cpu = jitter(cpu, 20, 3, 96);
@@ -29,6 +47,9 @@
       memory: { usage: mem },
       host: { hostname: "desktop", platform: "win32" },
       media: TRACKS[Math.floor(tick / 14) % TRACKS.length],
+      // Cycles through the three states the weather widget has to render, because the
+      // interesting half of that widget is what it does when it does not know.
+      weather: WEATHER[pinnedWeather ?? Math.floor(tick / 10) % WEATHER.length],
       date: {
         time: d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
         seconds: d.getSeconds(),
@@ -37,6 +58,13 @@
       },
     };
   }
+
+  /** A state named in the query string, or null to cycle. */
+  const pinnedWeather = (() => {
+    const want = new URLSearchParams(location.search).get("weather");
+    const i = ["fresh", "stale", "unknown"].indexOf(want);
+    return i === -1 ? null : i;
+  })();
 
   const subs = new Set();
   setInterval(() => { const s = snapshot(); subs.forEach((f) => f(s)); }, 1000);
