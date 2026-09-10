@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>hikari - decoder</title>
+<title>hikari - notepad</title>
 <!-- Under the host these come from the preload bridge. In a browser the mock stands in,
      and it needs the shared config module to read the query string. -->
 <script>if(!window.hikari)document.write('<script src="../../src/lib/config.js"><\/script><script src="../../preview/mock-hikari.js"><\/script>')</script>
@@ -45,7 +45,7 @@
   #missing code { font-family: var(--font-mono, monospace); color: var(--accent-2); }
 </style>
 <div id="frame">
-  <div id="bar"><b>decoder</b> <span id="hint">paste anything</span> <span class="key" id="key"></span></div>
+  <div id="bar"><b>notepad</b> <span id="hint">a line at a time</span> <span class="key" id="key"></span></div>
   <div id="host"></div>
 </div>
 <script>
@@ -60,24 +60,29 @@
   const res = await fetch("./app/index.html", { method: "HEAD" }).catch(() => null);
   if (!res || !res.ok) {
     host.innerHTML =
-      '<div id="missing"><span>The decoder build is not here yet.<br><br>' +
-      'Run <code>node scripts/sync-tool.mjs decoder ../decoder</code><br>' +
+      '<div id="missing"><span>The notepad build is not here yet.<br><br>' +
+      'Run <code>node scripts/sync-tool.mjs notepad ../notepad</code><br>' +
       'after building it in its own repository.</span></div>';
     return;
   }
 
-  // embed=1 turns off the app's title and its explanation, and turns on the one message it
-  // listens for. Without that parameter it registers no listener at all.
+  // embed=1 turns off the app's own bar and footer, since this frame draws both, and turns
+  // on the one message it listens for. Without that parameter it registers no listener.
   const frame = document.createElement("iframe");
   frame.src = "./app/index.html?embed=1";
-  frame.title = "decoder";
+  frame.title = "notepad";
   host.appendChild(frame);
 
   /**
    * Push the clipboard in when the overlay is summoned.
    *
-   * This is the whole reason a desktop build exists: copy a token, press the key, and it is
-   * already decoded. The browser build has no clipboard access at all and asks for none.
+   * Copy a figure, press the key, and it is already a line. The browser build has no
+   * clipboard access at all and asks for none.
+   *
+   * The app *appends* what arrives rather than replacing what is there, which matters more
+   * here than it does for the sibling: this window holds notes, and the clipboard is not
+   * one of them. Sending the same text twice is a no-op, so hunting for the window by
+   * pressing the key repeatedly does not fill it with duplicates.
    *
    * targetOrigin is "*" because it has to be. The app is loaded from a file URL, whose
    * origin is the string "null", so there is no origin to name. What makes that safe is the
@@ -94,7 +99,7 @@
     } catch (e) {
       // Refused because the manifest did not ask. Not fatal: the tool still works, you just
       // paste into it yourself, so this is a note rather than a failure on screen.
-      console.warn("[hikari] decoder: no clipboard access,", e.message);
+      console.warn("[hikari] notepad: no clipboard access,", e.message);
     }
   }
 

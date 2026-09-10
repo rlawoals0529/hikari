@@ -72,6 +72,7 @@ test("discover finds the bundled widgets and skips a disabled one", () => {
     "decoder",
     "dock",
     "media",
+    "notepad",
     "nowplaying",
     "settings",
     "shader",
