@@ -1,0 +1,47 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="../theme.css">
+<script>if(!window.hikari)document.write('<script src="../../preview/mock-hikari.js"><\/script>')</script>
+<style>
+  .panel { display: flex; flex-direction: column; justify-content: space-between; }
+  .title { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .artist { color: var(--dim); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .controls { display: flex; gap: 6px; align-items: center; }
+  button { all: unset; width: 30px; height: 30px; display: grid; place-items: center; cursor: pointer;
+    border-radius: 9px; border: 1px solid var(--edge); color: var(--dim); transition: all .16s ease; }
+  button:hover { color: #fff; border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    background: color-mix(in srgb, var(--accent) 16%, transparent); }
+  button svg { width: 13px; height: 13px; fill: currentColor; }
+  .idle { color: var(--dim); font-size: 12.5px; }
+</style>
+<div class="panel">
+  <div>
+    <div class="title" id="title">—</div>
+    <div class="artist" id="artist"></div>
+  </div>
+  <div class="controls">
+    <button id="prev" title="Previous"><svg viewBox="0 0 16 16"><path d="M4 2h2v12H4zM14 2v12L6 8z"/></svg></button>
+    <button id="play" title="Play or pause"><svg id="pi" viewBox="0 0 16 16"><path d="M4 2l10 6-10 6z"/></svg></button>
+    <button id="next" title="Next"><svg viewBox="0 0 16 16"><path d="M10 2h2v12h-2zM2 2l8 6-8 6z"/></svg></button>
+  </div>
+</div>
+<script>
+  const PLAY = "M4 2l10 6-10 6z";
+  const PAUSE = "M3 2h4v12H3zM9 2h4v12H9z";
+  window.hikari.subscribe((s) => {
+    const m = s.media;
+    const title = document.getElementById("title");
+    const artist = document.getElementById("artist");
+    if (!m?.available) {
+      title.textContent = "Nothing playing";
+      title.className = "idle";
+      artist.textContent = "";
+    } else {
+      title.className = "title";
+      title.textContent = m.title;
+      artist.textContent = m.artist ?? "";
+    }
+    document.querySelector("#pi path").setAttribute("d", m?.isPlaying ? PAUSE : PLAY);
+  });
+  document.getElementById("play").onclick = () => window.hikari.media.playPause();
+  document.getElementById("next").onclick = () => window.hikari.media.next();
+  document.getElementById("prev").onclick = () => window.hikari.media.previous();
+</script>

@@ -1,0 +1,17 @@
+:root {
+  --accent: #ff4d8d;
+  --accent-2: #4dd6ff;
+  --panel: rgba(14, 14, 20, 0.72);
+  --fg: #edeef5;
+  --dim: #8d8da6;
+  --edge: rgba(255, 255, 255, 0.08);
+  --radius: 16px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; background: transparent; overflow: hidden;
+  font: 13px/1.35 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  color: var(--fg); user-select: none; -webkit-font-smoothing: antialiased; }
+.panel { height: 100%; background: var(--panel); border: 1px solid var(--edge);
+  border-radius: var(--radius); backdrop-filter: blur(22px) saturate(150%);
+  box-shadow: 0 10px 34px rgba(0,0,0,.42); padding: 14px 16px; }
+.label { color: var(--dim); font-size: 11px; letter-spacing: .5px; text-transform: uppercase; }

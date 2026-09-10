@@ -1,0 +1,25 @@
+{
+  "name": "hikari",
+  "version": "0.1.0",
+  "description": "Desktop widgets written in HTML, CSS and TypeScript. Transparent, always-on-top, driven by live system providers. No window manager required.",
+  "main": "src/main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/place.test.js",
+    "preview": "npx --yes http-server -p 8910 -s ."
+  },
+  "keywords": [
+    "desktop",
+    "widgets",
+    "electron",
+    "rainmeter",
+    "customization",
+    "windows",
+    "overlay"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.2.1"
+  }
+}

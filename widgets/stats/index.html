@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="../theme.css">
+<script>if(!window.hikari)document.write('<script src="../../preview/mock-hikari.js"><\/script>')</script>
+<style>
+  .row { display: grid; grid-template-columns: 34px 1fr 44px; align-items: center; gap: 10px; margin-top: 12px; }
+  .row:first-of-type { margin-top: 6px; }
+  .bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.09); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width .45s ease; }
+  .bar.hot i { background: linear-gradient(90deg, var(--accent), #ff2d55); }
+  .v { text-align: right; font-variant-numeric: tabular-nums; }
+  .host { margin-top: 12px; }
+</style>
+<div class="panel">
+  <div class="row"><span class="label">cpu</span><span class="bar" id="cb"><i id="ci"></i></span><span class="v" id="cv">--</span></div>
+  <div class="row"><span class="label">ram</span><span class="bar" id="mb"><i id="mi"></i></span><span class="v" id="mv">--</span></div>
+  <div class="label host" id="host"></div>
+</div>
+<script>
+  const set = (barId, fillId, valId, pct) => {
+    const v = document.getElementById(valId);
+    if (pct == null) { v.textContent = "--"; return; }   // unknown stays unknown
+    document.getElementById(fillId).style.width = pct + "%";
+    document.getElementById(barId).classList.toggle("hot", pct >= 85);
+    v.textContent = Math.round(pct) + "%";
+  };
+  window.hikari.subscribe((s) => {
+    set("cb", "ci", "cv", s.cpu?.usage);
+    set("mb", "mi", "mv", s.memory?.usage);
+    if (s.host) document.getElementById("host").textContent = s.host.hostname;
+  });
+</script>

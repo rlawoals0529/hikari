@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8"><title>hikari — widget preview</title>
+<style>
+  body { margin:0; min-height:100vh; padding:44px; box-sizing:border-box;
+         background:#0b0b11 radial-gradient(1100px 600px at 78% -8%, #241436, #0b0b11) no-repeat;
+         font:13px system-ui,sans-serif; color:#6d6d86;
+         display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:26px; align-content:start; }
+  figure { margin:0; }
+  iframe { border:0; display:block; }
+  figcaption { margin-top:10px; font-size:12px; }
+  h1 { grid-column:1/-1; margin:0 0 4px; font-size:15px; color:#d8d8e6; font-weight:600; }
+  p.note { grid-column:1/-1; margin:0 0 10px; }
+</style>
+<h1>hikari</h1>
+<p class="note">The real widgets, driven by mocked provider output. Buttons log to the console.</p>
+<figure><iframe src="../widgets/clock/index.html" width="230" height="108"></iframe><figcaption>clock</figcaption></figure>
+<figure><iframe src="../widgets/stats/index.html" width="230" height="116"></iframe><figcaption>stats</figcaption></figure>
+<figure><iframe src="../widgets/nowplaying/index.html" width="320" height="104"></iframe><figcaption>nowplaying — interactive</figcaption></figure>

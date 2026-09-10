@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="../theme.css">
+<script>if(!window.hikari)document.write('<script src="../../preview/mock-hikari.js"><\/script>')</script>
+<style>
+  .time { font-size: 40px; font-weight: 300; letter-spacing: 1px; font-variant-numeric: tabular-nums; line-height: 1; }
+  .time .sec { font-size: 17px; color: var(--accent); margin-left: 4px; }
+  .sub { margin-top: 7px; display: flex; gap: 8px; align-items: baseline; }
+  .sub .day { color: var(--accent-2); }
+</style>
+<div class="panel">
+  <div class="time"><span id="t">--:--</span><span class="sec" id="s"></span></div>
+  <div class="sub"><span class="day" id="d"></span><span class="label" id="dt"></span></div>
+</div>
+<script>
+  window.hikari.subscribe((state) => {
+    const d = state.date; if (!d) return;
+    document.getElementById("t").textContent = d.time;
+    document.getElementById("s").textContent = String(d.seconds).padStart(2, "0");
+    document.getElementById("d").textContent = d.day;
+    document.getElementById("dt").textContent = d.date;
+  });
+</script>
