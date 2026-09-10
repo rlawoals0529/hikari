@@ -1,0 +1,137 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hikari - dock</title>
+<!-- Under the host these come from the preload bridge. In a browser the mock stands in,
+     and it needs the shared config module to read the query string. -->
+<script>if(!window.hikari)document.write('<script src="../../src/lib/config.js"><\/script><script src="../../preview/mock-hikari.js"><\/script>')</script>
+<link rel="stylesheet" href="../theme.css">
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; background: transparent; }
+  #bar {
+    height: 100%; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 0 10px;
+    background: var(--panel); border: 1px solid var(--edge); border-radius: inherit;
+    backdrop-filter: blur(20px);
+    font: 11px/1 var(--font-body, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif);
+  }
+
+  /* One button per entry, and the button is the hit area rather than the icon inside it.
+     A 26px icon is not a target; the 44px around it is. */
+  button.app {
+    position: relative;
+    width: 44px; height: 44px; padding: 0;
+    display: grid; place-items: center;
+    background: none; border: 0; border-radius: 9px;
+    cursor: pointer; color: var(--fg);
+    transition: background-color 140ms ease-out, transform 140ms ease-out;
+  }
+  button.app:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+  /* Downward, not up. A dock at the bottom of the screen that grows upward on hover moves
+     toward the pointer and the button slides out from under the cursor. */
+  button.app:active { transform: translateY(1px); }
+  button.app img { width: 26px; height: 26px; display: block; }
+
+  /* No icon is a letter, not a blank square. A blank square reads as a broken widget; a
+     letter reads as an app whose icon the OS would not give us. */
+  button.app .letter {
+    width: 26px; height: 26px; display: grid; place-items: center;
+    border-radius: 7px; background: color-mix(in srgb, var(--accent) 22%, transparent);
+    color: var(--fg); font-size: 12px; font-weight: 600; text-transform: uppercase;
+  }
+
+  /* The label appears on hover, above the bar, because a dock with every name visible is a
+     menu and this is meant to be recognised rather than read. */
+  button.app .label {
+    position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+    white-space: nowrap; padding: 4px 8px; border-radius: 6px;
+    background: var(--bg); border: 1px solid var(--edge); color: var(--fg);
+    font-size: 11px; opacity: 0; pointer-events: none;
+    transition: opacity 120ms ease-out;
+  }
+  button.app:hover .label, button.app:focus-visible .label { opacity: 1; }
+
+  .empty, .broken { color: var(--dim); font-size: 11.5px; padding: 0 6px; text-align: center; line-height: 1.5; }
+  .broken { color: var(--err, #ff6b6b); }
+</style>
+<div id="bar"><span class="empty">Loading</span></div>
+<script>
+(async () => {
+  const bar = document.getElementById("bar");
+  window.hikari.onConfigChange?.(() => location.reload());
+
+  function say(cls, text) {
+    bar.replaceChildren();
+    const p = document.createElement("span");
+    p.className = cls;
+    // textContent, because these strings carry a config value the user typed and one of
+    // them is a label.
+    p.textContent = text;
+    bar.appendChild(p);
+  }
+
+  let dock;
+  try {
+    dock = await window.hikari.dock.entries();
+  } catch (e) {
+    // Refused because the manifest did not ask. Said out loud rather than left empty: an
+    // empty dock and a refused dock look identical and mean different things.
+    say("broken", e.message);
+    return;
+  }
+
+  const entries = dock?.entries ?? [];
+  if (entries.length === 0) {
+    say("empty", 'Nothing in the dock. Add entries under "dock" in ~/.hikari/config.json.');
+    return;
+  }
+
+  bar.replaceChildren();
+  for (const entry of entries) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "app";
+    button.setAttribute("aria-label", entry.label);
+
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = entry.label;
+
+    // A letter first, replaced by the real icon if the OS gives one. That order means the
+    // dock is usable from the first frame rather than after a round trip per button.
+    const letter = document.createElement("span");
+    letter.className = "letter";
+    letter.textContent = entry.label.slice(0, 1);
+    button.append(letter, label);
+
+    button.addEventListener("click", async () => {
+      try {
+        await window.hikari.dock.launch(entry.id);
+      } catch (e) {
+        // Never silent. A dock button that does nothing is indistinguishable from a broken
+        // app, and the thing that is wrong is in a file nobody thinks to open.
+        console.error("[hikari] dock:", e.message);
+        button.animate(
+          [{ transform: "translateX(-2px)" }, { transform: "translateX(2px)" }, { transform: "translateX(0)" }],
+          { duration: 160, iterations: 2 },
+        );
+      }
+    });
+
+    bar.appendChild(button);
+
+    window.hikari.dock
+      .icon(entry.id)
+      .then((dataUrl) => {
+        if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) return;
+        const img = document.createElement("img");
+        img.src = dataUrl;
+        img.alt = "";
+        letter.replaceWith(img);
+      })
+      .catch(() => {
+        // The letter is already there, so there is nothing to do and nothing to say.
+      });
+  }
+})();
+</script>

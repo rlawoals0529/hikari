@@ -6,7 +6,7 @@
  * all of them on a shared tick. Widgets are plain web pages; nothing here is bound to a
  * window manager, which is the whole reason this exists.
  */
-const { app, BrowserWindow, clipboard, globalShortcut, ipcMain, screen } = require("electron");
+const { app, BrowserWindow, clipboard, globalShortcut, ipcMain, screen, shell } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { providers } = require("./providers");
@@ -17,6 +17,7 @@ const { plan } = require("./lib/hotkeys");
 const { granted } = require("./lib/grants");
 const { changed } = require("./lib/watch");
 const { statePath, readState, writable } = require("./lib/store");
+const { readEntries, resolveTarget } = require("./lib/launch");
 
 /**
  * Where settings, the user's theme layer and the user's own widgets live.
@@ -518,6 +519,118 @@ app.whenReady().then(() => {
       throw new Error(`could not write ${path.basename(where.path)}: ${err.message}`);
     }
     return true;
+  });
+
+  /**
+   * The dock's entries, so a widget can draw buttons for what the user configured.
+   *
+   * Read only, and it carries no paths: a widget is told the id and the label and nothing
+   * else. Handing it the path would let it display one thing and would still not let it run
+   * another, but there is no reason for it to know, and the icon comes through a separate
+   * call that resolves the id itself.
+   */
+  ipcMain.handle("hikari:dock", (e) => {
+    const manifest = manifests.get(e.sender.id);
+    if (!granted(manifest, "launch")) {
+      const msg = 'this widget did not ask to launch anything. Add "launch": true to its widget.json.';
+      console.error(`[hikari] refused a dock read: ${msg}`);
+      throw new Error(msg);
+    }
+    const { entries, problems } = readEntries(userConfig.dock);
+    for (const p of problems) console.error(`[hikari] dock: ${p}`);
+    // Ids and labels only.
+    return { entries: entries.map(({ id, label, kind }) => ({ id, label, kind })), problems };
+  });
+
+  /**
+   * Start one of the user's own dock entries.
+   *
+   * **The renderer names an id, never a target.** There is no path parameter, no URI
+   * parameter, no argument list and no command string, so there is nothing to inject into.
+   * The id is looked up by strict comparison against an array, never as a property of an
+   * object, because a lookup would answer `"__proto__"` with something inherited and that
+   * value would then reach a shell call.
+   *
+   * `shell.openPath` and `shell.openExternal` both take a value rather than a command line,
+   * and there is no `child_process` anywhere in this path. Quoting and metacharacters are
+   * therefore not handled carefully here: they are not a category of bug, which is a
+   * stronger position than handling them.
+   */
+  ipcMain.handle("hikari:launch", async (e, id) => {
+    const manifest = manifests.get(e.sender.id);
+    if (!granted(manifest, "launch")) {
+      const msg = 'this widget did not ask to launch anything. Add "launch": true to its widget.json.';
+      console.error(`[hikari] refused a launch: ${msg}`);
+      throw new Error(msg);
+    }
+
+    const { entries } = readEntries(userConfig.dock);
+    const target = resolveTarget(entries, id);
+    if (target.error) {
+      // Loudly, never as a no-op. A dock button that silently does nothing is
+      // indistinguishable from a broken app, and the config is what nobody thinks to check.
+      console.error(`[hikari] refused a launch: ${target.error}`);
+      throw new Error(target.error);
+    }
+
+    console.log(`[hikari] launching "${target.label}"`);
+    if (target.kind === "path") {
+      // Returns a string, empty on success, rather than throwing. Ignoring it means a
+      // missing application looks exactly like a working one.
+      const failure = await shell.openPath(target.value);
+      if (failure) throw new Error(`could not open ${target.label}: ${failure}`);
+      return true;
+    }
+    await shell.openExternal(target.value);
+    return true;
+  });
+
+  /**
+   * The real icon of an installed application, as a data URL.
+   *
+   * Nothing is bundled and nothing is drawn. `app.getFileIcon` asks the OS for the icon it
+   * already shows for that file, so the dock shows your own applications looking like
+   * themselves, with nothing to license and nothing to ship.
+   *
+   * Resolved from the id here rather than taking a path, for the same reason `launch` does:
+   * a renderer that could name a file could read an icon out of anywhere on the disk, which
+   * is a small leak and an unnecessary one.
+   *
+   * `path.normalize` is not tidiness. On Windows a forward-slash path returns the generic
+   * document icon rather than the one embedded in the executable, which looks exactly like
+   * the API failing when it is the path that is wrong.
+   *
+   * **No `size` option, and that is load-bearing.** `{ size: "large" }` is the obvious thing
+   * to ask for and it hard-crashes Electron 33.4.11 on macOS: `FATAL check.cc Check failed:
+   * false. NOTREACHED`, the whole process, on the first call. Not an exception, so no
+   * try/catch can save it, and the dock would have taken the app down every time it drew.
+   * Measured by calling it three ways in isolation: no option and `{ size: "normal" }` both
+   * return a 32x32 image, `{ size: "large" }` crashes.
+   *
+   * 32x32 is more than the 26px the dock draws, so nothing is lost. If somebody adds the
+   * option back for a bigger icon, they will find this comment in the crash report.
+   */
+  ipcMain.handle("hikari:dock-icon", async (e, id) => {
+    const manifest = manifests.get(e.sender.id);
+    if (!granted(manifest, "launch")) {
+      throw new Error('this widget did not ask to launch anything. Add "launch": true to its widget.json.');
+    }
+    const { entries } = readEntries(userConfig.dock);
+    const target = resolveTarget(entries, id);
+    if (target.error) throw new Error(target.error);
+    // A URI has no file to take an icon from. Null rather than an error, because the widget
+    // draws a letter instead and that is a normal outcome rather than a failure.
+    if (target.kind !== "path") return null;
+    try {
+      const image = await app.getFileIcon(path.normalize(target.value));
+      // An empty image is what a missing file gives, and it renders as a blank square that
+      // looks like a broken widget rather than a missing application.
+      if (!image || image.isEmpty()) return null;
+      return image.toDataURL();
+    } catch (err) {
+      console.error(`[hikari] no icon for "${target.label}": ${err.message}`);
+      return null;
+    }
   });
 
   ipcMain.handle("hikari:media", (_e, action) => control(action));

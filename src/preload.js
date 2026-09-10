@@ -82,6 +82,19 @@ contextBridge.exposeInMainWorld("hikari", {
     get: () => ipcRenderer.invoke("hikari:store:get"),
     set: (value) => ipcRenderer.invoke("hikari:store:set", value),
   },
+  /**
+   * The dock: what the user configured, and a way to start one of them.
+   *
+   * `launch` takes an id and nothing else. There is no path parameter and no way to add
+   * one, so a widget can ask for the entry the user called "steam" and cannot ask for
+   * anything the user did not write down. The host resolves the id against its own copy of
+   * the config, which the renderer never sees the targets of.
+   */
+  dock: {
+    entries: () => ipcRenderer.invoke("hikari:dock"),
+    launch: (id) => ipcRenderer.invoke("hikari:launch", id),
+    icon: (id) => ipcRenderer.invoke("hikari:dock-icon", id),
+  },
   media: {
     playPause: () => ipcRenderer.invoke("hikari:media", "playpause"),
     next: () => ipcRenderer.invoke("hikari:media", "next"),

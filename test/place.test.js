@@ -70,6 +70,7 @@ test("discover finds the bundled widgets and skips a disabled one", () => {
     "clock",
     "companion",
     "decoder",
+    "dock",
     "media",
     "nowplaying",
     "shader",

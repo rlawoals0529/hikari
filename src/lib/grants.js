@@ -23,8 +23,14 @@
  * There is no path parameter anywhere in it: the host resolves the asking widget's own id
  * to one file under `~/.hikari/state/`, so a widget cannot name a file and cannot reach
  * another widget's data because it cannot express another widget's name.
+ *
+ * `launch` is the sharpest one, and it is bounded the same way: the widget names an id from
+ * the user's own config and the host resolves it. There is no parameter for a path, a URI or
+ * an argument, so a widget that can start a program still cannot choose which program. A
+ * wallpaper shader must not be able to start anything, which is the whole reason this is
+ * asked for rather than assumed.
  */
-const CAPABILITIES = new Set(["clipboard", "storage"]);
+const CAPABILITIES = new Set(["clipboard", "storage", "launch"]);
 
 /**
  * @param {object | undefined} manifest  the asking widget's own manifest

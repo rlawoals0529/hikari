@@ -268,6 +268,33 @@
     clipboard: {
       readText: () => Promise.resolve(window.hikariConfig.fromQuery(location.search).clipboardText ?? ""),
     },
+    /**
+     * The dock, in the three states it has.
+     *
+     * No icons: `app.getFileIcon` is an Electron call and a browser has no equivalent, so
+     * the preview always shows the letter fallback. That is worth knowing when building it,
+     * because the letter is what a real dock shows for every URI entry too.
+     */
+    dock: (() => {
+      const which = window.hikariConfig.fromQuery(location.search).dock ?? "some";
+      const SETS = {
+        some: [
+          { id: "steam", label: "Steam", kind: "uri" },
+          { id: "code", label: "Visual Studio Code", kind: "path" },
+          { id: "spotify", label: "Spotify", kind: "path" },
+          { id: "steam-440", label: "Team Fortress 2", kind: "uri" },
+        ],
+        empty: [],
+      };
+      return {
+        entries: () =>
+          which === "refused"
+            ? Promise.reject(new Error('this widget did not ask to launch anything. Add "launch": true to its widget.json.'))
+            : Promise.resolve({ entries: SETS[which] ?? SETS.some, problems: [] }),
+        launch: (id) => (console.log("[preview] would launch", id), Promise.resolve(true)),
+        icon: () => Promise.resolve(null),
+      };
+    })(),
     media: {
       playPause: () => (console.log("[preview] play/pause"), Promise.resolve(true)),
       next: () => (console.log("[preview] next"), Promise.resolve(true)),

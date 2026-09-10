@@ -33,7 +33,7 @@ test("a capability the host does not define throws, rather than reading as not a
   // Otherwise a typo in the host's own code looks like a widget that had not asked, and the
   // fix gets looked for in the manifest.
   assert.throws(() => granted({ clipbaord: true }, "clipbaord"), /unknown capability/);
-  assert.throws(() => granted({ launch: true }, "launch"), /unknown capability/);
+  assert.throws(() => granted({ netwrok: true }, "netwrok"), /unknown capability/);
 });
 
 test("prototype keys are not capabilities", () => {
@@ -44,6 +44,7 @@ test("prototype keys are not capabilities", () => {
 test("the capability list is not empty, so these tests cannot pass by covering nothing", () => {
   assert.ok(CAPABILITIES.has("clipboard"));
   assert.ok(CAPABILITIES.has("storage"));
+  assert.ok(CAPABILITIES.has("launch"));
 });
 
 test("storage is a capability, and it is not a licence to write anywhere", () => {
@@ -62,4 +63,25 @@ test("asking for one capability does not grant the other", () => {
   // round. Two names, two answers.
   assert.equal(granted({ storage: true }, "clipboard"), false);
   assert.equal(granted({ clipboard: true }, "storage"), false);
+});
+
+test("launch is a capability, and it is not a licence to run anything", () => {
+  // The sharpest one. What makes it safe is not this check, it is that the call it guards
+  // takes an id from the user's own config and has no parameter for a target: see
+  // src/lib/launch.js.
+  assert.equal(granted({ launch: true }, "launch"), true);
+  assert.equal(granted({ launch: "true" }, "launch"), false);
+  assert.equal(granted({}, "launch"), false);
+  assert.equal(granted(undefined, "launch"), false);
+});
+
+test("no capability implies any other", () => {
+  // A wallpaper shader that reads the clipboard must not thereby be able to start a program,
+  // and a dock must not be able to read the clipboard. Three names, three answers.
+  const all = ["clipboard", "storage", "launch"];
+  for (const held of all) {
+    for (const asked of all) {
+      assert.equal(granted({ [held]: true }, asked), held === asked, `${held} -> ${asked}`);
+    }
+  }
 });
