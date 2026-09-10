@@ -1,0 +1,172 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hikari - companion</title>
+<script>if(!window.hikari)document.write('<script src="../../preview/mock-hikari.js"><\/script>')</script>
+<script src="../../src/lib/mood.js"></script>
+<link rel="stylesheet" href="../theme.css">
+<style>
+  html, body { height: 100%; margin: 0; background: transparent; overflow: hidden; }
+  #stage {
+    height: 100%;
+    display: grid; place-items: end center;
+    padding-bottom: 6px;
+    font: 11px/1 var(--font-body, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif);
+  }
+  svg { display: block; overflow: visible; }
+  /* `hidden` is an HTML attribute and the UA rule that hides it does not reach SVG, so
+     without this every eye state draws at once and the character has four pairs. */
+  svg [hidden] { display: none; }
+  /* The label is the honest half: the drawing is a mood, this says which reading produced
+     it. Without it a sleeping cat and a broken provider look the same. */
+  #label {
+    margin-top: 4px; text-align: center;
+    color: var(--dim); letter-spacing: .08em; text-transform: uppercase;
+    font-size: 9.5px;
+  }
+  #label b { color: var(--fg); font-weight: 600; letter-spacing: .04em; }
+  #label[hidden] { display: none; }
+  .unknown #label b { color: var(--warn, #f5a94f); }
+  @media (prefers-reduced-motion: reduce) { svg * { animation: none !important; } }
+</style>
+<div id="stage">
+  <div>
+    <svg id="cat" width="150" height="132" viewBox="0 0 150 132" role="img" aria-label="Desktop companion">
+      <!-- Tail. Drawn first so the body covers where it joins. -->
+      <path id="tail" fill="none" stroke="var(--accent)" stroke-width="9" stroke-linecap="round"
+            d="M108 108 C 132 106, 140 88, 132 74" opacity="0.9"/>
+
+      <!-- Body. One rounded shape; the head sits on it rather than beside it. -->
+      <ellipse id="body" cx="75" cy="104" rx="40" ry="26" fill="var(--accent)"/>
+
+      <g id="head">
+        <!-- Ears before the face, so the head outline overlaps their base. -->
+        <path id="earL" d="M44 44 L40 18 L64 33 Z" fill="var(--accent)"/>
+        <path id="earR" d="M106 44 L110 18 L86 33 Z" fill="var(--accent)"/>
+        <path d="M46 41 L44 27 L58 35 Z" fill="var(--accent-2)" opacity="0.55"/>
+        <path d="M104 41 L106 27 L92 35 Z" fill="var(--accent-2)" opacity="0.55"/>
+
+        <circle cx="75" cy="60" r="35" fill="var(--accent)"/>
+
+        <!-- Eyes. Every state is drawn; only one is shown at a time. -->
+        <g id="eyesOpen">
+          <ellipse cx="62" cy="58" rx="4.4" ry="5.6" fill="var(--bg, #0b0b11)"/>
+          <ellipse cx="88" cy="58" rx="4.4" ry="5.6" fill="var(--bg, #0b0b11)"/>
+        </g>
+        <g id="eyesWide" hidden>
+          <ellipse cx="62" cy="58" rx="6.2" ry="7.4" fill="var(--bg, #0b0b11)"/>
+          <ellipse cx="88" cy="58" rx="6.2" ry="7.4" fill="var(--bg, #0b0b11)"/>
+          <circle cx="63.6" cy="56" r="1.9" fill="var(--fg)" opacity=".85"/>
+          <circle cx="89.6" cy="56" r="1.9" fill="var(--fg)" opacity=".85"/>
+        </g>
+        <g id="eyesShut" hidden stroke="var(--bg, #0b0b11)" stroke-width="2.6" stroke-linecap="round" fill="none">
+          <path d="M57 59 q5 4 10 0"/>
+          <path d="M83 59 q5 4 10 0"/>
+        </g>
+        <g id="eyesHappy" hidden stroke="var(--bg, #0b0b11)" stroke-width="2.6" stroke-linecap="round" fill="none">
+          <path d="M57 60 q5 -5 10 0"/>
+          <path d="M83 60 q5 -5 10 0"/>
+        </g>
+        <g id="eyesAsk" hidden>
+          <ellipse cx="62" cy="58" rx="4.4" ry="5.6" fill="var(--bg, #0b0b11)"/>
+          <ellipse cx="88" cy="58" rx="4.4" ry="5.6" fill="var(--bg, #0b0b11)"/>
+          <text x="112" y="34" font-size="26" font-weight="700"
+                font-family="var(--font-display, system-ui), system-ui"
+                fill="var(--warn, #f5a94f)">?</text>
+        </g>
+
+        <!-- Nose and mouth. -->
+        <path d="M75 68 l-3.4 -3 h6.8 Z" fill="var(--bg, #0b0b11)" opacity=".85"/>
+        <path d="M75 70 q-5 5 -9 1 M75 70 q5 5 9 1" stroke="var(--bg, #0b0b11)" stroke-width="1.8"
+              fill="none" stroke-linecap="round" opacity=".7"/>
+      </g>
+    </svg>
+    <div id="label" hidden><b></b> <span></span></div>
+  </div>
+</div>
+<script>
+(async () => {
+  const { moodFrom, breath, blinking } = window.hikariMood;
+
+  const params = new URLSearchParams(location.search);
+  const cfg = { ...(await window.hikari.config?.() ?? {}) };
+  for (const [k, v] of params) cfg[k] = v === "true" ? true : v === "false" ? false : v;
+
+  const stage = document.getElementById("stage");
+  const label = document.getElementById("label");
+  const labelName = label.querySelector("b");
+  const labelWhy = label.querySelector("span");
+  label.hidden = cfg.showLabel === false;
+
+  const el = (id) => document.getElementById(id);
+  const EYES = { open: el("eyesOpen"), wide: el("eyesWide"), closed: el("eyesShut"),
+                 happy: el("eyesHappy"), question: el("eyesAsk") };
+
+  let state = {};
+  window.hikari.subscribe?.((s) => { state = s; });
+
+  // A fixed hour can be forced so the sleepy state is reachable in a preview at midday,
+  // and a mood can be forced outright so the gallery and the screenshots can show all
+  // six without waiting for the machine to produce them. Preview only; the host passes
+  // neither.
+  const forcedHour = params.has("hour") ? Number(params.get("hour")) : null;
+  const forcedMood = params.get("mood");
+  const FORCED = {
+    unknown:   {},
+    idle:      { cpu: { usage: 6 } },
+    working:   { cpu: { usage: 45 } },
+    busy:      { cpu: { usage: 88 } },
+    listening: { cpu: { usage: 12 }, media: { isPlaying: true } },
+    sleepy:    { cpu: { usage: 4 } },
+  };
+
+  const start = performance.now();
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const t = now - start;
+    const hour = forcedMood === "sleepy" ? 3 : (forcedHour ?? new Date().getHours());
+    // One source for both the mood and the number under it. Reading the mood from a
+    // forced state and the percentage from the live one prints "busy, 21%".
+    const source = forcedMood ? FORCED[forcedMood] ?? state : state;
+    const mood = moodFrom(source, hour);
+
+    const b = breath(t, mood.energy);
+    const shut = blinking(t, mood.eyes);
+
+    // One phase drives everything, so nothing can drift out of step.
+    el("body").setAttribute("ry", (26 + b * 1.6).toFixed(2));
+    el("head").setAttribute("transform", `translate(0 ${(b * 2.2 - 1.1).toFixed(2)})`);
+    el("tail").setAttribute(
+      "d",
+      `M108 108 C 132 106, ${(140 + b * 8).toFixed(1)} ${(88 - b * 10).toFixed(1)}, ` +
+      `${(132 + b * 4).toFixed(1)} ${(74 - b * 14).toFixed(1)}`,
+    );
+    const ear = (b * 3 - 1.5).toFixed(2);
+    el("earL").setAttribute("transform", `rotate(${-ear} 44 44)`);
+    el("earR").setAttribute("transform", `rotate(${ear} 106 44)`);
+
+    // Blinking overrides the mood's eyes, except where the mood has already closed them
+    // or is asking a question, which blinking() handles rather than this does.
+    const showing = shut && mood.eyes !== "question" ? "closed" : mood.eyes;
+    for (const [name, node] of Object.entries(EYES)) {
+      // `hidden` is an IDL property of HTMLElement, not SVGElement, so assigning it here
+      // sets a JavaScript expando and changes nothing on screen. The attribute has to be
+      // written directly, and only the group that shipped with it in the markup was ever
+      // being hidden at all.
+      if (name === showing) node.removeAttribute("hidden");
+      else node.setAttribute("hidden", "");
+    }
+
+    stage.className = mood.name;
+    if (!label.hidden) {
+      labelName.textContent = mood.label;
+      const usage = source.cpu?.usage;
+      labelWhy.textContent =
+        mood.name === "unknown" ? "cpu unread"
+        : typeof usage === "number" ? `${Math.round(usage)}%`
+        : "";
+    }
+  }
+  requestAnimationFrame(frame);
+})();
+</script>

@@ -1,10 +1,17 @@
 :root {
+  /* Widgets float over the desktop, so there is no page background to inherit. --bg is
+     the ink for marks drawn ON an accent fill, and the ground a full-surface widget uses
+     when it needs one. Without it here, `var(--bg)` was invalid everywhere it appeared:
+     an invalid fill silently falls back to black and looks deliberate, while an invalid
+     stroke falls back to none and the mark just is not there. */
+  --bg: #0b0b11;
   --accent: #ff4d8d;
   --accent-2: #4dd6ff;
   --panel: rgba(14, 14, 20, 0.72);
   --fg: #edeef5;
   --dim: #8d8da6;
   --edge: rgba(255, 255, 255, 0.08);
+  --warn: #f5a94f;
   --radius: 16px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }

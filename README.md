@@ -144,6 +144,45 @@ Two things worth knowing if you write one:
   spending 60 frames and every pixel on it is a poor trade for the machine that is also
   running your game. `scale: 0.5` is most of the look for a quarter of the work.
 
+## A companion that reads the machine
+
+![Six states: idle, working, busy, listening, asleep, and no reading](docs/companion.png)
+
+```json
+{ "name": "companion", "anchor": "bottom_right", "showLabel": true }
+```
+
+A cat drawn in SVG, no sprites and no image files, whose state comes from the providers
+rather than from a timer. Load decides most of it: idle, then busy, then working hard.
+Music playing beats the clock, because a machine playing something at 2am is listening
+rather than asleep, and strain beats music, because 90% load is the thing worth noticing.
+
+**Its most important state is not knowing.** `cpuUsage()` returns null when two samples
+land inside one tick, and a companion that sits there looking calm on a null is lying in
+the one place you will believe it, because a glance is all it gets. So there is a sixth
+face: a question mark, in the warning colour, with `no reading  cpu unread` written
+underneath. Calm and unmeasured must never look the same.
+
+The label is the honest half. The drawing is a mood; the line under it is the number that
+produced the mood, so you can tell a sleeping cat from a broken provider.
+
+One phase drives the breathing, the ears and the tail, so they cannot drift apart the way
+three timers would, and blinks are scheduled from the elapsed time rather than at random,
+so two companions do not blink in unison and a screenshot is reproducible.
+
+`?mood=busy` forces a state for the gallery. The host never passes it.
+
+### Two SVG traps this walked into
+
+- **`hidden` is an HTML attribute.** The UA rule that turns it into `display: none` does
+  not reach SVG, and `el.hidden = false` on an `SVGElement` sets a JavaScript property
+  that changes nothing on screen. Every eye state was drawing at once, and only the group
+  that happened to carry the attribute in the markup was ever hidden.
+- **An invalid `fill` falls back to black; an invalid `stroke` falls back to none.**
+  `--bg` was never defined in `widgets/theme.css`, so `fill="var(--bg)"` looked correct
+  by luck while `stroke="var(--bg)"` drew nothing at all. The token exists now, and the
+  shader widget's `u_bg` reads the theme rather than the fallback it had been using.
+
 ## Media control without an API key
 
 The now-playing widget has working transport buttons and **no Spotify account, no OAuth and

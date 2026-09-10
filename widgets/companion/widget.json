@@ -1,0 +1,10 @@
+{
+  "name": "companion",
+  "anchor": "bottom_right",
+  "width": 200,
+  "height": 190,
+  "margin": 24,
+  "interactive": false,
+  "opacity": 1,
+  "showLabel": true
+}
