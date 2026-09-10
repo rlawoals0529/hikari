@@ -1,0 +1,13 @@
+{
+  "name": "audio-visualizer",
+  "anchor": "bottom_center",
+  "width": 640,
+  "height": 200,
+  "margin": 24,
+  "interactive": false,
+  "mode": "spectrum",
+  "bands": 48,
+  "opacity": 0.95,
+  "radius": 16,
+  "source": "microphone"
+}

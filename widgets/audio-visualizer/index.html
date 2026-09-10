@@ -1,0 +1,220 @@
+<!doctype html><meta charset="utf-8">
+<link rel="stylesheet" href="../theme.css">
+<script>if(!window.hikari)document.write('<script src="../../preview/mock-hikari.js"><\/script>')</script>
+<style>
+  html, body { background: transparent; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .idle { position: fixed; inset: 0; display: grid; place-items: center; padding: 18px;
+          background: var(--panel); border: 1px solid var(--edge); border-radius: inherit;
+          backdrop-filter: blur(18px); }
+  .idle > span { text-align: center; color: var(--dim); font-size: 12px; line-height: 1.6; max-width: 34ch; }
+  .idle b { color: var(--fg); font-weight: 600; }
+</style>
+<canvas id="c"></canvas>
+<div class="idle" id="idle" hidden><span></span></div>
+<script type="module">
+/**
+ * Draws whatever the machine is playing.
+ *
+ * Colours come from the theme's custom properties, so it inherits whatever palette the rest
+ * of the desktop is using rather than hard-coding one.
+ */
+const cv = document.getElementById("c");
+const ctx = cv.getContext("2d");
+const idle = document.getElementById("idle");
+
+const css = (name, fallback) =>
+  getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.floor(cv.clientWidth * dpr);
+  cv.height = Math.floor(cv.clientHeight * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+new ResizeObserver(resize).observe(cv);
+resize();
+
+// --- the same pure maths the tests cover, inlined for the widget ---
+function logBands(bins, count, sampleRate = 48000, minHz = 30, maxHz = 16000) {
+  if (count <= 0) return [];
+  if (bins.length === 0) return new Array(count).fill(0);
+  const hzPerBin = sampleRate / 2 / bins.length;
+  const out = new Array(count).fill(0);
+  for (let b = 0; b < count; b++) {
+    const lo = minHz * Math.pow(maxHz / minHz, b / count);
+    const hi = minHz * Math.pow(maxHz / minHz, (b + 1) / count);
+    let start = Math.floor(lo / hzPerBin);
+    let end = Math.ceil(hi / hzPerBin);
+    if (end <= start) end = start + 1;
+    start = Math.max(0, Math.min(start, bins.length - 1));
+    end = Math.max(start + 1, Math.min(end, bins.length));
+    let sum = 0;
+    for (let i = start; i < end; i++) sum += bins[i];
+    out[b] = sum / (end - start) / 255;
+  }
+  return out;
+}
+const smooth = (prev, next, attack = 0.55, release = 0.12) =>
+  next.map((v, i) => {
+    const p = prev[i] ?? 0;
+    return p + (v - p) * (v > p ? attack : release);
+  });
+const bassLevel = (b, n = 3) =>
+  b.length ? b.slice(0, Math.min(n, b.length)).reduce((s, v) => s + v, 0) / Math.min(n, b.length) : 0;
+
+// --- draw modes ---
+function spectrum(bands, t) {
+  const { width: w, height: h } = cv.getBoundingClientRect();
+  const gap = 2;
+  const bw = (w - gap * (bands.length - 1)) / bands.length;
+  const g = ctx.createLinearGradient(0, h, 0, 0);
+  g.addColorStop(0, css("--accent-2", "#4dd6ff"));
+  g.addColorStop(1, css("--accent", "#ff4d8d"));
+  ctx.fillStyle = g;
+  bands.forEach((v, i) => {
+    const bh = Math.max(2, v * h * 0.94);
+    const x = i * (bw + gap);
+    ctx.beginPath();
+    ctx.roundRect(x, h - bh, bw, bh, Math.min(3, bw / 2));
+    ctx.fill();
+  });
+}
+
+function radial(bands, t) {
+  const { width: w, height: h } = cv.getBoundingClientRect();
+  const cx = w / 2;
+  const cy = h / 2;
+  const base = Math.min(w, h) * 0.2;
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = css("--accent", "#ff4d8d");
+  ctx.beginPath();
+  bands.forEach((v, i) => {
+    const a = (i / bands.length) * Math.PI * 2 + t * 0.0002;
+    const r = base + v * base * 1.9;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.closePath();
+  ctx.stroke();
+  const bass = bassLevel(bands);
+  ctx.fillStyle = css("--accent-2", "#4dd6ff");
+  ctx.globalAlpha = 0.25 + bass * 0.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, base * (0.5 + bass * 0.7), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+}
+
+const MODES = { spectrum, radial };
+
+// --- input ---
+async function microphone() {
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error("No audio input API in this browser.");
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const ctxA = new AudioContext();
+  await start(ctxA);
+  const analyser = ctxA.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.6;
+  ctxA.createMediaStreamSource(stream).connect(analyser);
+  return { analyser, sampleRate: ctxA.sampleRate };
+}
+
+/** A deterministic stand-in, so the widget can be seen and screenshot without a microphone. */
+/**
+ * An AudioContext begins suspended without a user gesture, and a desktop widget never gets
+ * one. Resuming is the whole fix; when the browser still refuses, say so rather than drawing
+ * flat bars that look like silence and are actually a blocked context.
+ */
+async function start(ctxA) {
+  if (ctxA.state === "suspended") {
+    // resume() can hang forever rather than rejecting when there is no device and no
+    // gesture, so it is raced against a timeout. An await that never settles is the worst
+    // failure available here: no frame draws and no error is ever reported.
+    await Promise.race([
+      ctxA.resume().catch(() => {}),
+      new Promise((r) => setTimeout(r, 1200)),
+    ]);
+  }
+  if (ctxA.state !== "running") {
+    throw new Error("Audio is suspended until a click. A desktop widget never gets one, so the host disables that requirement.");
+  }
+}
+
+async function oscillator() {
+  const ctxA = new AudioContext();
+  const analyser = ctxA.createAnalyser();
+  analyser.fftSize = 2048;
+  const osc = ctxA.createOscillator();
+  const lfo = ctxA.createOscillator();
+  const depth = ctxA.createGain();
+  const gain = ctxA.createGain();
+  osc.type = "sawtooth";
+  osc.frequency.value = 110;
+  lfo.frequency.value = 0.4;
+  depth.gain.value = 260;
+  lfo.connect(depth).connect(osc.frequency);
+  gain.gain.value = 0.35;
+  osc.connect(gain).connect(analyser);
+  osc.start();
+  lfo.start();
+  await start(ctxA);
+  return { analyser, sampleRate: ctxA.sampleRate };
+}
+
+function showIdle(reason) {
+  idle.hidden = false;
+  idle.querySelector("span").innerHTML = reason;
+}
+
+async function main() {
+  // The preview has no host to read a manifest from, so a query string stands in for it.
+  const q = new URLSearchParams(location.search);
+  const cfg = { ...((await window.hikari?.config?.()) ?? {}) };
+  if (q.has("demo")) cfg.source = "demo";
+  if (q.has("mode")) cfg.mode = q.get("mode");
+
+  const mode = MODES[cfg.mode] ?? spectrum;
+  const count = cfg.bands ?? 48;
+  document.body.style.opacity = cfg.opacity ?? 1;
+
+  // Draw from the first frame, before audio is known to work. Blocking the render on audio
+  // setup means one hung promise leaves a permanently blank widget.
+  let analyser = null;
+  let sampleRate = 48000;
+  let held = new Array(count).fill(0);
+  let t = 0;
+
+  const frame = () => {
+    t += 16;
+    let next;
+    if (analyser) {
+      const bins = new Uint8Array(analyser.frequencyBinCount);
+      analyser.getByteFrequencyData(bins);
+      next = logBands(bins, count, sampleRate);
+    } else {
+      // Ambient drift while there is no input. Unknown must never render as flat silence:
+      // the two look identical and mean opposite things.
+      next = Array.from({ length: count }, (_, i) => 0.07 + 0.05 * Math.sin(t * 0.0008 + i * 0.35));
+    }
+    held = smooth(held, next);
+    const { width: w, height: h } = cv.getBoundingClientRect();
+    ctx.clearRect(0, 0, w, h);
+    mode(held, t);
+    requestAnimationFrame(frame);
+  };
+  frame();
+
+  try {
+    const source = cfg.source === "demo" ? await oscillator() : await microphone();
+    analyser = source.analyser;
+    sampleRate = source.sampleRate;
+  } catch (e) {
+    showIdle(`<b>No audio input.</b><br>${e.message || "Permission was refused."}<br>Set <b>"source": "demo"</b> to preview it.`);
+  }
+}
+
+main();
+</script>

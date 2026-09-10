@@ -68,6 +68,38 @@ an unmuted video silently never starts.
 wallpaper belongs behind the taskbar rather than beside it. `layer: "wallpaper"` drops the
 window behind everything and makes it click-through.
 
+## Audio-reactive
+
+A widget that draws whatever the machine is playing.
+
+![The spectrum visualiser, 48 logarithmic bands](docs/audio.png)
+
+```json
+{ "name": "audio-visualizer", "mode": "spectrum", "bands": 48, "source": "microphone" }
+```
+
+`mode` is `spectrum` or `radial`. Colours come from the theme's custom properties, so it
+inherits whatever palette the rest of the desktop uses rather than hard-coding one.
+
+Bands are **logarithmic**, because hearing is. A linear split hands almost every bucket to
+the treble and squeezes all the bass anyone actually watches into the first bar or two.
+Smoothing is asymmetric: fast attack so a beat lands on the frame it happened, slow release
+so the bar has something to fall from.
+
+Two things a desktop widget forces you to get right:
+
+- **An `AudioContext` starts suspended without a user gesture**, and a widget never receives
+  one. The host sets `autoplayPolicy: "no-user-gesture-required"` so it can start at all.
+- **`resume()` can hang rather than reject** when there is no device, so it is raced against
+  a timeout. Rendering never waits on audio setup either — one unsettled promise would
+  otherwise leave a permanently blank widget with no error anywhere.
+
+With no input it draws a slow ambient wave and says why. Unknown must never render as flat
+silence: the two look identical and mean opposite things.
+
+`?demo=1` in the preview drives it from an oscillator, so it can be seen and screenshot
+without a microphone.
+
 ## Media control without an API key
 
 The now-playing widget has working transport buttons and **no Spotify account, no OAuth and
@@ -131,8 +163,8 @@ clock. Iterating on how a widget looks should not require restarting a desktop s
 npm test
 ```
 
-Nine tests over the placement geometry and widget discovery: work-area anchoring against a
-taskbar, every anchor, stacked offsets, a second monitor's origin, manifest defaults, and that a screen-filling wallpaper ignores the work-area inset on any monitor.
+Twenty-one tests: placement geometry and widget discovery: work-area anchoring against a
+taskbar, every anchor, stacked offsets, a second monitor's origin, manifest defaults, a screen-filling wallpaper ignoring the work-area inset on any monitor, and the audio band maths — logarithmic bucketing, every band owning a bin on a small transform, asymmetric smoothing, and silence reading as zero rather than noise.
 The host imports Electron at load, so the tests stub it — which is possible only because
 the geometry is a pure function.
 

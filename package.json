@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "electron .",
-    "test": "node --test test/place.test.js",
+    "test": "node --test test/place.test.js test/bands.test.js",
     "preview": "npx --yes http-server -p 8910 -s ."
   },
   "keywords": [

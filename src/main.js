@@ -73,7 +73,14 @@ function createWidget({ id, dir, manifest }) {
     focusable: manifest.interactive ?? false,
     hasShadow: false,
     show: false,
-    webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false },
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      // A widget never receives a click, so the default policy would leave every
+      // AudioContext suspended and any audio-reactive widget frozen at silence.
+      autoplayPolicy: "no-user-gesture-required",
+    },
   });
 
   if (manifest.layer === "wallpaper") {
