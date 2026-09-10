@@ -15,9 +15,10 @@
  * `weather` is the first one that needs it: a latitude and a longitude, or a place name,
  * have nowhere else to arrive from. It also carries the pattern for the ones after it,
  * which is that the fetch lives in the provider and every decision about the response
- * lives in a pure module beside it.
+ * lives in a pure module beside it. `calendar` is the second, and follows it exactly.
  */
 const os = require("node:os");
+const { calendar } = require("./calendar");
 const { media } = require("./media");
 const { weather } = require("./weather");
 
@@ -72,6 +73,7 @@ const providers = [
   },
   media,
   weather,
+  calendar,
 ];
 
 module.exports = { providers, cpuUsage };

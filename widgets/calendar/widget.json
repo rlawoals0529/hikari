@@ -1,0 +1,9 @@
+{
+  "name": "calendar",
+  "anchor": "top_left",
+  "width": 264,
+  "height": 232,
+  "margin": 20,
+  "offsetY": 144,
+  "count": 4
+}

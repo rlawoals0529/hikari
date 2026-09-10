@@ -12,6 +12,8 @@
  * value and the widget is told when to stop trusting it.
  */
 
+const { classify, present: presentReading } = require("./freshness");
+
 /**
  * WMO weather interpretation codes, transcribed from Open-Meteo's own documentation.
  *
@@ -75,17 +77,23 @@ const FRESH_MS = 60 * 60 * 1000;
 const STALE_MS = 3 * 60 * 60 * 1000;
 
 /**
+ * The windows and the wording, handed to the shared rule in `freshness.js`.
+ *
+ * The three-state age decision is not about weather, and the second provider to need it
+ * would have made this file's copy one of two. Only these four values are weather's.
+ */
+const LIFE = {
+  freshMs: FRESH_MS,
+  staleMs: STALE_MS,
+  missing: "no reading yet",
+  tooOld: "the last reading is too old to show",
+};
+
+/**
  * @returns {"fresh" | "stale" | "expired"}
  */
 function freshness(takenAt, now) {
-  if (!Number.isFinite(takenAt) || !Number.isFinite(now)) return "expired";
-  const age = now - takenAt;
-  // A reading from the future is a clock problem, not a fresh reading, and treating it as
-  // fresh would show a number nobody can account for.
-  if (age < 0) return "expired";
-  if (age <= FRESH_MS) return "fresh";
-  if (age <= STALE_MS) return "stale";
-  return "expired";
+  return classify(takenAt, now, LIFE);
 }
 
 const ALLOWED_UNITS = new Set(["metric", "imperial"]);
@@ -252,21 +260,7 @@ function coord(v) {
  * reason attached, rather than as a number that looks current.
  */
 function present(reading, now, error) {
-  if (!reading) {
-    return { available: false, reason: error ?? "no reading yet", freshness: "expired" };
-  }
-  const state = freshness(reading.takenAt, now);
-  if (state === "expired") {
-    return {
-      available: false,
-      // The last error if there was one, because "the network is down" is more use than
-      // "this is old" when both are true.
-      reason: error ?? "the last reading is too old to show",
-      freshness: state,
-      takenAt: reading.takenAt,
-    };
-  }
-  return { ...reading, available: true, freshness: state, ...(error ? { reason: error } : {}) };
+  return presentReading(reading, now, error, LIFE);
 }
 
 module.exports = {

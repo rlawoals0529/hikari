@@ -37,6 +37,54 @@
       reason: 'set "latitude" and "longitude", or "place", under providers.weather in ~/.hikari/config.json' },
   ];
 
+  /**
+   * The calendar, in every state the widget has to render.
+   *
+   * Times are built from load rather than written down, because the widget's day headings
+   * are relative -- "today", "tomorrow" -- and a fixture dated last March would render as a
+   * wall of dates and quietly stop exercising the interesting branch.
+   *
+   * The two empty states are both here on purpose. An empty feed and a clear week produce
+   * the same empty list and mean opposite things, so a preview that only carried one of
+   * them would let the wrong sentence ship.
+   */
+  const CALENDAR = (() => {
+    const now = Date.now();
+    const hours = (n) => now + n * 3600000;
+    /** Local midnight n days out, which is where an all-day event starts. */
+    const midnight = (n) => {
+      const d = new Date(now);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() + n);
+      return d.getTime();
+    };
+    const events = [
+      { uid: "1", summary: "Platform standup", location: "Room 3",
+        start: hours(-0.3), end: hours(0.7), allDay: false },
+      { uid: "2", summary: "Design review, new onboarding flow", location: null,
+        start: hours(3), end: hours(4), allDay: false },
+      { uid: "3", summary: "Company holiday", location: null,
+        start: midnight(1), end: midnight(2), allDay: true },
+      { uid: "4", summary: "One to one", location: "Cafe; corner table",
+        start: midnight(2) + 10 * 3600000, end: midnight(2) + 10.5 * 3600000, allDay: false },
+      { uid: "5", summary: "Quarterly planning review with the whole of platform engineering",
+        location: null, start: midnight(3) + 14 * 3600000, end: midnight(3) + 16 * 3600000,
+        allDay: false },
+    ];
+    return [
+      { available: true, freshness: "fresh", takenAt: now, source: "url:https://example.com/work.ics",
+        events, total: events.length, days: 7 },
+      { available: true, freshness: "stale", takenAt: now - 5 * 3600000,
+        source: "url:https://example.com/work.ics", events: events.slice(2), total: 9, days: 7 },
+      { available: true, freshness: "fresh", takenAt: now, source: "file:/home/me/work.ics",
+        events: [], total: 0, days: 7 },
+      { available: true, freshness: "fresh", takenAt: now, source: "url:https://example.com/work.ics",
+        events: [], total: 12, days: 7 },
+      { available: false, freshness: "expired",
+        reason: 'set "url" or "file" under providers.calendar in ~/.hikari/config.json' },
+    ];
+  })();
+
   function snapshot() {
     tick++;
     cpu = jitter(cpu, 20, 3, 96);
@@ -50,6 +98,7 @@
       // Cycles through the three states the weather widget has to render, because the
       // interesting half of that widget is what it does when it does not know.
       weather: WEATHER[pinnedWeather ?? Math.floor(tick / 10) % WEATHER.length],
+      calendar: CALENDAR[pinnedCalendar ?? Math.floor(tick / 10) % CALENDAR.length],
       date: {
         time: d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
         seconds: d.getSeconds(),
@@ -63,6 +112,14 @@
   const pinnedWeather = (() => {
     const want = new URLSearchParams(location.search).get("weather");
     const i = ["fresh", "stale", "unknown"].indexOf(want);
+    return i === -1 ? null : i;
+  })();
+
+  /** The same, for the calendar. `?calendar=clear` is a week with nothing in it, which is
+   *  not `?calendar=empty`, a feed with nothing in it. */
+  const pinnedCalendar = (() => {
+    const want = new URLSearchParams(location.search).get("calendar");
+    const i = ["fresh", "stale", "empty", "clear", "unavailable"].indexOf(want);
     return i === -1 ? null : i;
   })();
 

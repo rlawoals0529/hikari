@@ -309,9 +309,96 @@ Both were the repo's one rule broken, and both were caught by a test rather than
   recent number about somewhere else entirely. The cache is keyed on location now, and two
   missing coordinates do not match a genuine reading at 0, 0 off the coast of Ghana.
 
+## Calendar, from an .ics feed
+
+Two ways in, both keyless, because the two ways people actually have a calendar are a
+subscription URL from whatever hosts it and a file on disk. Pick one:
+
+```json
+{ "providers": { "calendar": { "url": "https://calendar.example.com/private-abc123/basic.ics", "days": 7 } } }
+{ "providers": { "calendar": { "file": "/home/me/Calendars/work.ics" } } }
+```
+
+`webcal://` is accepted and rewritten, because that is the scheme a calendar app hands you
+when you ask it to share a feed.
+
+**Setting both is refused rather than resolved.** Picking one silently would mean editing
+the other and seeing nothing change, which is the worst way for a setting to be wrong.
+
+### The subscription URL is a credential
+
+Treat it exactly like a password. **Anyone who holds that URL can read your calendar** -
+every title, every attendee, every location, with no login and no way for you to see that
+they are doing it. Calendar services build the secret into the path, so there is nothing
+else protecting it.
+
+So it belongs in `~/.hikari/config.json`, which git has never heard of, and **never in this
+repository** - not in a `widget.json`, not in a test fixture, not in a commit you mean to
+amend later. Revoking one means regenerating the feed in the calendar service and
+resubscribing everywhere, so a leak is not something you quietly clean up.
+
+For the same reason **an `http://` URL is refused outright.** It would put a token that
+reads every appointment onto the wire in clear, on every poll, forever. If a feed genuinely
+has no TLS, fetch it yourself and point `file` at what you saved.
+
+### Why the parsing is the interesting half
+
+`src/lib/ics.js` is pure and `src/providers/calendar.js` only fetches, which is what lets
+the whole of the below be tested against a fixture with no network and no calendar. Four
+things in RFC 5545 bite, in the order they cost you:
+
+| | |
+| --- | --- |
+| **Folding** | A long line is broken with CRLF and a single space. Unfolding has to happen before any parsing, or every long `SUMMARY` is silently cut at 73 characters and the tail is left behind as a line that parses as nothing. |
+| **The parameter colon** | Parameters may contain a quoted colon, as in `ATTENDEE;CN="Smith:Jr":mailto:x`. Splitting on the first colon full stop puts half the parameters in the value. |
+| **Escapes** | Only `\n` `\N` `\,` `\;` and `\\` are escapes. Unescaping in two passes turns a literal backslash followed by an `n` into a newline. |
+| **Three date forms** | `20260910` is a floating date, `20260910T140000Z` is an instant, and `20260910T140000` with `TZID=Europe/London` is a wall clock that has to be converted. Only the fourth case, a local time with no zone at all, is what `Date.parse` would get right. |
+
+An all-day date is anchored to **local** midnight. A UTC anchor is the classic
+off-by-one-day calendar bug: west of Greenwich the event begins the previous evening and
+shows up under yesterday.
+
+`DTEND` is **exclusive**, and it stays exclusive. An all-day event on the 10th is written
+with a `DTEND` of the 11th, and "correcting" that makes the event end at midnight on the
+morning of the day it is on, so it filters out as already over for the whole of the day it
+actually occupies.
+
+### A stale feed is worse than no feed, for a different reason
+
+The events are dated, so an hour-old feed still shows the right time for the meetings it
+knows about. What an old feed cannot know is a *change* - a cancellation, or something added
+this morning - so what expires is the claim that the list is complete.
+
+| Age | What you see |
+| --- | --- |
+| under an hour | the list |
+| one to twenty-four hours | the list, dimmed, with how old it is |
+| over a day | no list at all, and the reason |
+
+**A failed refresh does not discard a good read.** The last one survives until it is
+genuinely too old, and the error travels beside it. The whole parsed event list is what is
+cached, not the window, so a kept feed still answers "what is next" correctly as the day
+moves through it.
+
+**An empty feed and a clear week are told apart.** Both are an empty list and they mean
+opposite things: one is a calendar to fix, the other is a week with nothing in it. The
+widget says which.
+
+### Three bugs this found
+
+- **`\\n` is not a newline.** The character class in the unescape pattern was missing the
+  backslash itself, so a literal backslash followed by an `n` came out as a backslash and a
+  newline. One pass, with the backslash inside the pattern, consumes the pair and moves on.
+- **A `VALARM` lives inside a `VEVENT` and carries its own `SUMMARY`.** Reading every line
+  between `BEGIN:VEVENT` and `END:VEVENT` lets the reminder's text become the meeting title
+  whenever the alarm is written first.
+- **One pass at a zone offset is an hour out beside a clock change.** Asking a zone for its
+  offset at the instant the fields *would* be if they were UTC can land on the wrong side of
+  a transition, so the conversion asks again at the instant the first answer produced.
+
 ## Providers
 
-`cpu` · `memory` · `host` · `date` · `media`
+`cpu` · `memory` · `host` · `date` · `media` · `weather` · `calendar`
 
 A widget reads its own manifest with `hikari.config()`, which is how the media widget gets
 its `source` without the host knowing anything about video.
@@ -457,14 +544,16 @@ is the only thing a preview is for.
 npm test
 ```
 
-A hundred and sixteen tests over the pure half: placement geometry and discovery (work-area anchoring
+Two hundred and thirty-six tests over the pure half: placement geometry and discovery (work-area anchoring
 against a taskbar, every anchor, stacked offsets, a second monitor's origin, manifest
 defaults, a screen-filling wallpaper ignoring the work-area inset on any monitor), the audio
 band maths (logarithmic bucketing, every band owning a bin on a small transform, asymmetric
 smoothing, silence reading as zero rather than noise), the shader prelude and its error line
 remapping, colour parsing, the companion's mood precedence, the theme layer order, the
-settings merge, the accelerator grammar, which changed file means what, and the capability
-checks.
+settings merge, the accelerator grammar, which changed file means what, the capability
+checks, reading a forecast, and reading an .ics feed (line unfolding, the three date forms,
+every text escape and the lone backslash that is not one, a quoted colon in a parameter, an
+event that never ends, and garbage in).
 
 The capability tests are all refusals, on purpose. The grant is one line; the refusals are
 why that line is safe. A widget that did not ask, a window the host cannot identify, and a
@@ -477,7 +566,7 @@ used to name two of them, and the other three had never run once.
 
 ## Status
 
-116 passing tests over the pure half, the widgets rendering live in the browser preview
+236 passing tests over the pure half, the widgets rendering live in the browser preview
 above, and the host itself run against a throwaway `HIKARI_HOME` with two extra widgets
 dropped in `widgets/` there. That run confirmed, in the app rather than in a test:
 

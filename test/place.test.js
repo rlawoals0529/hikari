@@ -66,6 +66,7 @@ test("discover finds the bundled widgets and skips a disabled one", () => {
   const found = discover().map((w) => w.id).sort();
   assert.deepStrictEqual(found, [
     "audio-visualizer",
+    "calendar",
     "clock",
     "companion",
     "decoder",
