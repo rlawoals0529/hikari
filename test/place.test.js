@@ -61,7 +61,7 @@ test("defaults apply when a manifest omits everything", () => {
 
 test("discover finds the bundled widgets and skips a disabled one", () => {
   const found = discover().map((w) => w.id).sort();
-  assert.deepStrictEqual(found, ["audio-visualizer", "clock", "media", "nowplaying", "stats"]);
+  assert.deepStrictEqual(found, ["audio-visualizer", "clock", "media", "nowplaying", "shader", "stats"]);
 });
 
 test("fill:screen covers the whole display, not the work area", () => {

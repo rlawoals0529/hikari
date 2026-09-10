@@ -1,0 +1,11 @@
+{
+  "name": "shader",
+  "layer": "wallpaper",
+  "fill": "screen",
+  "interactive": false,
+  "shader": "aurora",
+  "fps": 30,
+  "scale": 1,
+  "audio": false,
+  "source": "microphone"
+}

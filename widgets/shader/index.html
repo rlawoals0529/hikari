@@ -1,0 +1,173 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hikari - shader</title>
+<script>if(!window.hikari)document.write('<script src="../../preview/mock-hikari.js"><\/script>')</script>
+<script src="../../src/lib/glsl.js"></script>
+<link rel="stylesheet" href="../theme.css">
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg, #0b0b11); }
+  canvas { display: block; width: 100%; height: 100%; }
+  /* A failure has to be readable on a wallpaper, which may be behind other windows and is
+     never clicked. It says what broke and where, and stays. */
+  #fault {
+    position: fixed; inset: auto 0 0 0; padding: 14px 18px;
+    font: 12px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+    white-space: pre-wrap; color: var(--err, #ff6b6b);
+    background: color-mix(in srgb, var(--bg, #0b0b11) 88%, transparent);
+    border-top: 1px solid color-mix(in srgb, var(--err, #ff6b6b) 40%, transparent);
+  }
+  #fault[hidden] { display: none; }
+</style>
+<canvas id="c"></canvas>
+<pre id="fault" hidden></pre>
+<script>
+(async () => {
+  const { hexToVec3, buildSource, remapErrors, formatErrors, uniformsFrom } = window.hikariGlsl;
+  const canvas = document.getElementById("c");
+  const faultBox = document.getElementById("fault");
+
+  const fault = (msg) => { faultBox.textContent = msg; faultBox.hidden = false; };
+
+  const params = new URLSearchParams(location.search);
+  const cfg = { ...(await window.hikari.config?.() ?? {}) };
+  for (const [k, v] of params) cfg[k] = v === "true" ? true : v === "false" ? false : v;
+  // Refuse an unsafe name rather than scrubbing it. Stripping the bad characters turns
+  // "../secret" into "secret" and then reports a 404 for a file nobody asked about, which
+  // sends the reader looking for the wrong problem.
+  const name = String(cfg.shader || "aurora");
+  if (!/^[a-z0-9][a-z0-9-]*$/i.test(name)) {
+    return fault(`"${name}" is not a shader name.\nUse letters, digits and dashes, starting with a letter or digit.`);
+  }
+  const fps = Math.max(1, Math.min(60, Number(cfg.fps) || 30));
+  // Rendering a wallpaper at native resolution costs more than it shows. Half scale is
+  // most of the look for a quarter of the pixels; the config can override it.
+  const scale = Math.max(0.25, Math.min(2, Number(cfg.scale) || 1));
+
+  const gl = canvas.getContext("webgl2", { antialias: false, depth: false, alpha: false });
+  if (!gl) return fault("This build has no WebGL2, so there is nothing to run the shader on.");
+
+  let body;
+  try {
+    const res = await fetch(`./shaders/${name}.frag`);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    body = await res.text();
+  } catch (e) {
+    return fault(`Could not load shaders/${name}.frag\n${e.message}`);
+  }
+
+  const compile = (type, src) => {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (gl.getShaderParameter(sh, gl.COMPILE_STATUS)) return sh;
+    const log = gl.getShaderInfoLog(sh);
+    gl.deleteShader(sh);
+    // Line numbers come back counted against the prelude too, so they are remapped onto
+    // the file the author actually edits before anyone reads them.
+    throw new Error(formatErrors(remapErrors(log), `${name}.frag`) || log);
+  };
+
+  // A single triangle covering the viewport. Two would need a shared edge, and the
+  // diagonal seam that produces is visible on some drivers.
+  const VERT = `#version 300 es
+    void main() {
+      vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+      gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+    }`;
+
+  let program;
+  try {
+    program = gl.createProgram();
+    gl.attachShader(program, compile(gl.VERTEX_SHADER, VERT));
+    gl.attachShader(program, compile(gl.FRAGMENT_SHADER, buildSource(body)));
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+  } catch (e) {
+    return fault(e.message);
+  }
+  gl.useProgram(program);
+
+  const loc = {};
+  const at = (n) => (loc[n] ??= gl.getUniformLocation(program, n));
+
+  // Colours come from the palette, read off the stylesheet rather than written here, so a
+  // theme change reskins every shader without any of them knowing about it.
+  const css = getComputedStyle(document.documentElement);
+  const colour = (varName, fallback) =>
+    hexToVec3(css.getPropertyValue(varName).trim()) ?? hexToVec3(fallback);
+  const bg = colour("--bg", "#0b0b11");
+  const accent = colour("--accent", "#8b7cf6");
+  const accent2 = colour("--accent-2", "#7fc9d1");
+
+  let state = {};
+  window.hikari.subscribe?.((s) => { state = s; });
+
+  let audio = { bass: 0, level: 0 };
+  if (cfg.audio) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const ctx = new AudioContext();
+      const an = ctx.createAnalyser();
+      an.fftSize = 1024;
+      an.smoothingTimeConstant = 0.75;
+      ctx.createMediaStreamSource(stream).connect(an);
+      const bins = new Uint8Array(an.frequencyBinCount);
+      audio = {
+        get bass() { an.getByteFrequencyData(bins); let s = 0; for (let i = 0; i < 8; i++) s += bins[i]; return s / (8 * 255); },
+        get level() { an.getByteFrequencyData(bins); let s = 0; for (const b of bins) s += b; return s / (bins.length * 255); },
+      };
+    } catch (e) {
+      // Not fatal. The shader has a resting state and runs without input, which is the
+      // whole reason the uniforms default to zero rather than to nothing.
+      console.warn("[hikari] no audio input, running without it:", e.message);
+    }
+  }
+
+  let mouse = null;
+  if (cfg.interactive) {
+    addEventListener("pointermove", (e) => { mouse = [e.clientX / innerWidth, 1 - e.clientY / innerHeight]; });
+  }
+
+  const resize = () => {
+    const w = Math.max(1, Math.floor(innerWidth * scale));
+    const h = Math.max(1, Math.floor(innerHeight * scale));
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w; canvas.height = h;
+      gl.viewport(0, 0, w, h);
+    }
+  };
+  addEventListener("resize", resize);
+  resize();
+
+  const start = performance.now();
+  const frameMs = 1000 / fps;
+  let last = 0;
+
+  function draw(now) {
+    requestAnimationFrame(draw);
+    // A wallpaper does not need 60fps and the machine has better uses for the frames.
+    if (now - last < frameMs) return;
+    last = now;
+
+    const u = uniformsFrom(state, { bass: audio.bass, level: audio.level }, {
+      time: (now - start) / 1000,
+      width: canvas.width,
+      height: canvas.height,
+      mouse,
+    });
+
+    gl.uniform2f(at("u_resolution"), u.u_resolution[0], u.u_resolution[1]);
+    gl.uniform1f(at("u_time"), u.u_time);
+    gl.uniform2f(at("u_mouse"), u.u_mouse[0], u.u_mouse[1]);
+    gl.uniform1f(at("u_bass"), u.u_bass);
+    gl.uniform1f(at("u_level"), u.u_level);
+    gl.uniform1f(at("u_cpu"), u.u_cpu);
+    gl.uniform3fv(at("u_bg"), bg);
+    gl.uniform3fv(at("u_accent"), accent);
+    gl.uniform3fv(at("u_accent2"), accent2);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  requestAnimationFrame(draw);
+})();
+</script>

@@ -100,6 +100,50 @@ silence: the two look identical and mean opposite things.
 `?demo=1` in the preview drives it from an oscillator, so it can be seen and screenshot
 without a microphone.
 
+## Shader wallpapers
+
+A fragment shader as the desktop background, running behind everything else.
+
+![Four shaders: aurora, contours, rain and starfield](docs/shaders.png)
+
+```json
+{ "name": "shader", "layer": "wallpaper", "fill": "screen", "shader": "contours", "fps": 30 }
+```
+
+Four ship: `aurora`, `starfield`, `rain` and `contours`. Drop a `.frag` into
+`widgets/shader/shaders/` and name it in the config to add your own.
+
+Every shader gets the same prelude, so a new one starts at `void main()` and has these
+already declared:
+
+| Uniform | |
+| --- | --- |
+| `u_time`, `u_resolution` | seconds since start, and the surface in pixels |
+| `u_mouse` | 0..1 across the surface, and `(-1,-1)` until the pointer has actually moved |
+| `u_bass`, `u_level` | smoothed loudness, both 0 when there is no audio |
+| `u_cpu` | 0..1, from the same provider the stats widget reads |
+| `u_bg`, `u_accent`, `u_accent2` | the palette, read off the stylesheet |
+
+Colours are not written into the shaders. They are read from the theme's custom properties
+at startup, which is why the same four files look like whichever palette the desktop is
+wearing rather than like themselves.
+
+**A shader that will not compile says where.** Drivers count lines against the source they
+were handed, and that includes the prelude, so a mistake on line 4 of your file gets
+reported as line 18. The log is remapped onto the file you actually edit before it is
+shown, and it is shown on the canvas rather than only in a console nobody has open behind
+a wallpaper. A missing file, a bad name and a build with no WebGL2 each say so too. None
+of them render black and leave you guessing.
+
+Two things worth knowing if you write one:
+
+- **Dither near-black gradients.** Between two dark colours an 8-bit display has only a
+  handful of levels, and without a little noise the gradient posterises into visible
+  bands. All four do it, in one line.
+- **`fps` defaults to 30 and `scale` to 1.** A wallpaper is seen in peripheral vision;
+  spending 60 frames and every pixel on it is a poor trade for the machine that is also
+  running your game. `scale: 0.5` is most of the look for a quarter of the work.
+
 ## Media control without an API key
 
 The now-playing widget has working transport buttons and **no Spotify account, no OAuth and
