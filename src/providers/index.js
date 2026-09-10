@@ -16,10 +16,18 @@
  * have nowhere else to arrive from. It also carries the pattern for the ones after it,
  * which is that the fetch lives in the provider and every decision about the response
  * lives in a pure module beside it. `calendar` is the second, and follows it exactly.
+ *
+ * `battery`, `disk` and `network` follow it for a different kind of source: the OS itself,
+ * in three different formats per question. There the split earns its keep twice over, once
+ * for testability and once for reach, because a Windows battery string and a Linux sysfs
+ * tree are parsed in a pure module that a Mac can run every test of.
  */
 const os = require("node:os");
+const { battery } = require("./battery");
 const { calendar } = require("./calendar");
+const { disk } = require("./disk");
 const { media } = require("./media");
+const { network } = require("./network");
 const { weather } = require("./weather");
 
 let lastCpu = null;
@@ -74,6 +82,11 @@ const providers = [
   media,
   weather,
   calendar,
+  // The three that read what the OS already knows. Each one is a file in `src/providers`
+  // with its decisions in a pure module beside it, which is the pattern `weather` set.
+  battery,
+  disk,
+  network,
 ];
 
 module.exports = { providers, cpuUsage };

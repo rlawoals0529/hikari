@@ -396,9 +396,140 @@ widget says which.
   offset at the instant the fields *would* be if they were UTC can land on the wrong side of
   a transition, so the conversion asks again at the instant the first answer produced.
 
+## Battery, disk and network, from what the OS already knows
+
+Three providers, no dependency, no elevated permission and nothing to sign up for. Each one
+reads a fact the operating system is already keeping, and each one is a thin provider over a
+pure module, so a Windows battery string and a Linux `sysfs` tree are both parsed by code
+every test on a Mac exercises.
+
+```json
+{ "providers": { "disk": { "paths": ["/", "~/Movies", "D:\\"] } } }
+```
+
+That is the only setting between the three of them. With nothing set, `disk` reports the home
+directory's filesystem, which is the one that fills up and the only one whose name this code
+can work out on all three platforms.
+
+The `system` widget shows all five readings on one panel: cpu, ram, a row per volume, the
+battery and the network.
+
+### No battery is not nought percent
+
+A desktop has no battery. The number a naive read produces for one is `0%`, which draws a
+full red bar saying the machine is about to die, on a machine that cannot lose power. So
+`installed` is a field of its own and a read that finds no battery is a **successful** read:
+`installed: false`, `percent: null`, and the widget says "no battery" in words.
+
+The same rule runs the other way for the time estimate, because all three platforms have a
+way of saying "I have no estimate" that looks like a duration:
+
+| | Says it like this | Reads as |
+| --- | --- | --- |
+| macOS | `0:00 remaining` | unknown |
+| Linux | a discharge rate of `0` | unknown |
+| Windows | `EstimatedRunTime=71582788` | unknown |
+
+That last one is a sentinel written into a value field, not a large number. Formatted, it
+says "2385 hours left" on a laptop sitting on mains.
+
+| | Where the answer comes from |
+| --- | --- |
+| macOS | `pmset -g batt`, one line, parsed |
+| Linux | `/sys/class/power_supply/BAT*`, read as files, no subprocess at all |
+| Windows | `WMIC PATH Win32_Battery`, with a PowerShell fallback |
+
+**The Windows fallback is not belt and braces.** WMIC is deprecated and absent from recent
+Windows 11 builds, and without the fallback the provider would report "no battery" on the
+newest laptops, which is the exact wrong answer in the place this widget is most wanted.
+
+Both Windows paths emit `Key=Value` lines, so there is one parser rather than two.
+
+### Free space, without a subprocess on any platform
+
+`fs.statfs` has been in Node since 18.15 and answers this on Windows, macOS and Linux in one
+shape, so there is no `df` parser and no `WMIC LOGICALDISK` parser here. Two details in it
+are worth knowing before changing anything:
+
+- **`bavail`, not `bfree`.** `bfree` counts the blocks the filesystem reserves for root, so a
+  disk with nothing writable left still reports a few gigabytes free. The widget would stay
+  green while saves started failing, which is the one moment it exists for.
+- **The block counts are in units of `frsize`, not `bsize`.** The two are both 4096 on APFS
+  and on ext4, which is exactly why picking the wrong one survives every test written on the
+  machine that wrote it, and then reports a filesystem with a 512-byte fragment size as eight
+  times its real capacity.
+
+A path that cannot be measured gets **its own row, saying why**, rather than disappearing. A
+mistyped path is the most likely thing to be wrong here, and a widget with one fewer line
+gives you nothing to fix. One bad path costs the others nothing.
+
+A `paths` value that is present but unusable is refused rather than ignored, for the same
+reason a missing latitude is: falling back silently would mean editing the setting and seeing
+nothing change.
+
+On macOS every volume in an APFS container reports the container's free space, so two paths
+on one Mac give the same figure. That is correct rather than a bug. The figures were
+cross-checked against `df -k` in the same second.
+
+### The network says only what it measured
+
+`os.networkInterfaces()` needs no subprocess, no permission and no packet, so `up` means one
+thing and is worded as that one thing: **the machine holds an address that could carry
+traffic.** A captive portal, a dead router and an expired lease all leave a routable address
+in place, and nothing short of sending a packet tells them apart. Nothing here sends one, so
+nothing here says "connected".
+
+Two addresses look like a network and are not, and both are refused:
+
+- **`fe80::/10`**, IPv6 link local, which is the whole block up to `febf` and not just the
+  `fe80` prefix. On macOS `awdl0` and `llw0` are Apple's peer-to-peer interfaces and they
+  hold an `fe80::` address **whether or not Wi-Fi is connected to anything**, as does an idle
+  VPN tunnel. All three are `internal: false`. A check that only asked about `internal` would
+  call an offline Mac online and name a peer-to-peer interface as the thing carrying it.
+- **`169.254/16`**, which is what an interface self-assigns when DHCP got no answer.
+
+`available` and `up` are kept apart. `available` is whether the provider got an answer; `up`
+is whether the machine has a network. Collapsing them would make a broken provider look
+exactly like an offline machine, and those need opposite responses from you.
+
+**Throughput is reported as unknown, and that is the finished state of it.** Node exposes no
+byte counters, and the three platforms keep them in three unrelated places: `/proc/net/dev`,
+`netstat -ib`, `Get-NetAdapterStatistics`. Two of those are a subprocess, a rate needs two
+samples, and doing it on Linux only would be worse than not doing it at all, because the same
+widget would show a number on one machine and a dash on another while the dash read as "no
+traffic". A fabricated zero was never on the table: it is indistinguishable from a quiet
+link, which is the exact bug the `cpu` provider's `null` was written to avoid.
+
+The provider does not read the routing table either. Naming the interface that actually
+carries the default route means `route -n get default`, `ip route` or `Get-NetRoute`, one
+subprocess per poll on all three platforms, to label a line of text. So the name is presented
+as what it is: an address the machine holds.
+
+### What building these turned up
+
+Neither of these was visible from a test. Both came from running the provider and looking at
+what it drew:
+
+- **`~` and `~/` are the same filesystem and produced two identical rows.** Driving the
+  provider with `paths: ["/", "~/", ...]` printed the home volume twice, which reads as a
+  bug in the widget rather than in the config. Only the deduplication key is normalised now,
+  never the path itself, because `C:\` stripped of its backslash becomes `C:`, and that names
+  the current directory on that drive rather than the drive.
+- **A 30 pixel label column turned `Archive` into `AR...`.** A volume is a name rather than a
+  label, so it now keeps the case its owner gave it, and dropping the uppercase transform
+  gave back about a fifth of the width in letter-spacing.
+
+And three traps that were designed around rather than walked into, each pinned by a test:
+
+| | |
+| --- | --- |
+| **"discharging" contains "charging"** | So does "not charging". A substring scan in any other order reports a draining battery as charging, which is the most misleading thing this widget could say. |
+| **Two rate pairs that must not be mixed** | Linux reports either microwatt-hours over microwatts or microamp-hours over microamps. The units cancel within a pair and not across one, so energy over current is wrong by a factor of the pack voltage with no symptom but a plausible number. |
+| **`Number(null)` is 0** | Every value in these three providers arrives from a file or a pipe, so absence looks like an empty string rather than like `undefined`. A missing `capacity` file coerced to a flat battery, and a missing `blocks` count coerced to a zero total, which turns a percentage into `NaN%`. |
+
 ## Providers
 
-`cpu` · `memory` · `host` · `date` · `media` · `weather` · `calendar`
+`cpu` · `memory` · `host` · `date` · `media` · `weather` · `calendar` · `battery` · `disk` · `network`
 
 A widget reads its own manifest with `hikari.config()`, which is how the media widget gets
 its `source` without the host knowing anything about video.
@@ -415,7 +546,15 @@ Adding one is a file in `src/providers/` and a line in the list.
 samples land inside one tick. The widgets render `--` for that.
 
 A fabricated `0%` is indistinguishable from a genuinely idle machine, and it is the reading
-a person acts on.
+a person acts on. Every provider added since keeps the same rule, and each one found a
+different way for a zero to sneak in:
+
+| | The zero that had to be refused |
+| --- | --- |
+| `weather` | `Number(null)` is 0, so a missing daily high read as zero degrees |
+| `battery` | a machine with no battery is not a battery at 0%, and `0:00 remaining` is not zero minutes left |
+| `disk` | a zero total turns a percentage into `NaN%`, so it is unknown rather than divided by |
+| `network` | no throughput is measured at all, and 0 bytes a second is what a quiet link looks like |
 
 ## Tools that live here as overlays
 
@@ -589,16 +728,20 @@ is the only thing a preview is for.
 npm test
 ```
 
-Two hundred and thirty-six tests over the pure half: placement geometry and discovery (work-area anchoring
+Three hundred and fifty tests over the pure half: placement geometry and discovery (work-area anchoring
 against a taskbar, every anchor, stacked offsets, a second monitor's origin, manifest
 defaults, a screen-filling wallpaper ignoring the work-area inset on any monitor), the audio
 band maths (logarithmic bucketing, every band owning a bin on a small transform, asymmetric
 smoothing, silence reading as zero rather than noise), the shader prelude and its error line
 remapping, colour parsing, the companion's mood precedence, the theme layer order, the
 settings merge, the accelerator grammar, which changed file means what, the capability
-checks, reading a forecast, and reading an .ics feed (line unfolding, the three date forms,
+checks, reading a forecast, reading an .ics feed (line unfolding, the three date forms,
 every text escape and the lone backslash that is not one, a quoted colon in a parameter, an
-event that never ends, and garbage in).
+event that never ends, and garbage in), and reading the machine itself (a real `pmset` line
+and a desktop that has no battery at all, every documented `Win32_Battery` status and the
+sentinel run time, both of Linux's rate pairs and the mixing of them that must never happen,
+a real `statfs` cross-checked against `df`, the reserved-blocks count that must not be read
+as free, and a real interface table whose peer-to-peer interfaces must not read as a network).
 
 The capability tests are all refusals, on purpose. The grant is one line; the refusals are
 why that line is safe. A widget that did not ask, a window the host cannot identify, and a
@@ -611,7 +754,7 @@ used to name two of them, and the other three had never run once.
 
 ## Status
 
-236 passing tests over the pure half, the widgets rendering live in the browser preview
+350 passing tests over the pure half, the widgets rendering live in the browser preview
 above, and the host itself run against a throwaway `HIKARI_HOME` with two extra widgets
 dropped in `widgets/` there. That run confirmed, in the app rather than in a test:
 
