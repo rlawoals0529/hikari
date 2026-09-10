@@ -33,7 +33,29 @@
 const CAPABILITIES = new Set(["clipboard", "storage", "launch"]);
 
 /**
- * @param {object | undefined} manifest  the asking widget's own manifest
+ * The capabilities a widget asked for, taken from its `widget.json` and nowhere else.
+ *
+ * This exists because of a real escalation path. `widgetConfig` merges
+ * `~/.hikari/config.json` over a manifest, and the merged object is what the host used to
+ * check. So a line in the user config could hand a wallpaper shader the clipboard and the
+ * launcher, which was harmless while only a person edited that file by hand and stops being
+ * harmless the moment any widget can write it: a widget with a settings surface could grant
+ * itself everything else.
+ *
+ * Measured before the change: a shader whose manifest asks for nothing came back with
+ * clipboard, launch and storage all granted once the user config said so.
+ *
+ * Layout still merges, and should. Where a widget sits is a preference. What a widget is
+ * allowed to do is not.
+ */
+function capabilitiesFrom(onDisk) {
+  const out = {};
+  for (const name of CAPABILITIES) out[name] = onDisk?.[name] === true;
+  return out;
+}
+
+/**
+ * @param {object | undefined} manifest  the asking widget's own capabilities
  * @param {string} capability
  */
 function granted(manifest, capability) {
@@ -41,4 +63,4 @@ function granted(manifest, capability) {
   return manifest?.[capability] === true;
 }
 
-module.exports = { CAPABILITIES, granted };
+module.exports = { CAPABILITIES, capabilitiesFrom, granted };

@@ -113,6 +113,26 @@ app. And `refresh:weather` is refused rather than having its target dropped: som
 wrote that wanted one provider refreshed, and quietly refreshing all of them is not what
 they asked for.
 
+### A setting cannot grant a capability
+
+Layout merges. `~/.hikari/config.json` can move a widget, resize it, switch it off. What a
+widget is **allowed to do** does not merge: capabilities are read from its `widget.json` and
+from nowhere else.
+
+That was not always true, and the reason it changed is worth stating. `widgetConfig` merges
+the user config over a manifest, and the host used to check the merged object, so this
+granted a wallpaper shader the clipboard and the launcher:
+
+```json
+{ "widgets": { "shader": { "clipboard": true, "launch": true } } }
+```
+
+Harmless while only a person edits that file by hand. Not harmless the moment any widget can
+write it, which is what a settings surface means: a widget with one could grant itself
+everything else. Verified after the change by giving a widget whose manifest asks for
+nothing exactly that config: all six calls refused, while the merged manifest it reads
+through `config()` still says `clipboard: true` and no longer matters.
+
 ### Clipboard access is asked for, and refused by default
 
 Until this, the worst a widget could do was skip a track. Reading the clipboard is a

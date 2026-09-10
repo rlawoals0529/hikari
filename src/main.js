@@ -14,7 +14,7 @@ const { control } = require("./providers/media");
 const { themeSources } = require("./lib/theme");
 const { widgetConfig, providerConfig, providerInterval, MIN_INTERVAL_MS } = require("./lib/config");
 const { plan } = require("./lib/hotkeys");
-const { granted } = require("./lib/grants");
+const { granted, capabilitiesFrom } = require("./lib/grants");
 const { changed } = require("./lib/watch");
 const { statePath, readState, writable } = require("./lib/store");
 const { readEntries, resolveTarget } = require("./lib/launch");
@@ -42,6 +42,13 @@ const USER_CONFIG = path.join(HIKARI_HOME, "config.json");
 
 const windows = new Map();
 const manifests = new Map();
+/**
+ * webContents id -> the capabilities that widget's own widget.json asked for.
+ *
+ * Kept apart from `manifests` on purpose. A manifest is merged with the user's config,
+ * which is right for layout and wrong for authority: see `capabilitiesFrom`.
+ */
+const capabilities = new Map();
 /** id -> { id, dir, onDisk, win }. What a re-merge needs: the untouched manifest and the window. */
 const registry = new Map();
 const state = {};
@@ -157,6 +164,10 @@ function createWidget({ id, dir, onDisk, manifest }) {
   // A widget reads its own manifest through hikari.config(). Keyed by webContents id so
   // two widgets from the same folder cannot read each other's settings.
   manifests.set(win.webContents.id, manifest);
+  // From the file on disk, never from the merged manifest. A user config line must not be
+  // able to grant a capability, because a widget that can write that file would then be
+  // able to grant itself one.
+  capabilities.set(win.webContents.id, capabilitiesFrom(onDisk));
 
   // The theme is applied by the preload, not from here. See `hikari:theme` below and the
   // comment on it in preload.js: injecting from this side happens after the page's own
@@ -398,6 +409,20 @@ function applyHotkeys(widgets) {
   }
 }
 
+/**
+ * Which widget a message came from, by its own id.
+ *
+ * From the registry rather than from the merged manifest, for the same reason the
+ * capabilities are: a user config can set `name`, and a renamed state file loses the list
+ * it was holding.
+ */
+function registryIdFor(webContentsId) {
+  for (const entry of registry.values()) {
+    if (!entry.win.isDestroyed() && entry.win.webContents.id === webContentsId) return entry.id;
+  }
+  return null;
+}
+
 function broadcast() {
   for (const win of windows.values()) {
     if (!win.isDestroyed()) win.webContents.send("hikari:state", state);
@@ -556,13 +581,13 @@ app.whenReady().then(() => {
    * way: against the manifest of the window the message came from.
    */
   ipcMain.handle("hikari:store:get", (e) => {
-    const manifest = manifests.get(e.sender.id);
-    if (!granted(manifest, "storage")) {
+    const caps = capabilities.get(e.sender.id);
+    if (!granted(caps, "storage")) {
       const msg = 'this widget did not ask to store anything. Add "storage": true to its widget.json.';
       console.error(`[hikari] refused a state read: ${msg}`);
       throw new Error(msg);
     }
-    const where = statePath(HIKARI_HOME, manifest?.name);
+    const where = statePath(HIKARI_HOME, registryIdFor(e.sender.id));
     if (where.error) throw new Error(where.error);
     if (!fs.existsSync(where.path)) return null;
     try {
@@ -575,13 +600,13 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle("hikari:store:set", (e, value) => {
-    const manifest = manifests.get(e.sender.id);
-    if (!granted(manifest, "storage")) {
+    const caps = capabilities.get(e.sender.id);
+    if (!granted(caps, "storage")) {
       const msg = 'this widget did not ask to store anything. Add "storage": true to its widget.json.';
       console.error(`[hikari] refused a state write: ${msg}`);
       throw new Error(msg);
     }
-    const where = statePath(HIKARI_HOME, manifest?.name);
+    const where = statePath(HIKARI_HOME, registryIdFor(e.sender.id));
     if (where.error) throw new Error(where.error);
 
     const ready = writable(value);
@@ -627,8 +652,8 @@ app.whenReady().then(() => {
    * call that resolves the id itself.
    */
   ipcMain.handle("hikari:dock", (e) => {
-    const manifest = manifests.get(e.sender.id);
-    if (!granted(manifest, "launch")) {
+    const caps = capabilities.get(e.sender.id);
+    if (!granted(caps, "launch")) {
       const msg = 'this widget did not ask to launch anything. Add "launch": true to its widget.json.';
       console.error(`[hikari] refused a dock read: ${msg}`);
       throw new Error(msg);
@@ -654,8 +679,8 @@ app.whenReady().then(() => {
    * stronger position than handling them.
    */
   ipcMain.handle("hikari:launch", async (e, id) => {
-    const manifest = manifests.get(e.sender.id);
-    if (!granted(manifest, "launch")) {
+    const caps = capabilities.get(e.sender.id);
+    if (!granted(caps, "launch")) {
       const msg = 'this widget did not ask to launch anything. Add "launch": true to its widget.json.';
       console.error(`[hikari] refused a launch: ${msg}`);
       throw new Error(msg);
@@ -708,8 +733,8 @@ app.whenReady().then(() => {
    * option back for a bigger icon, they will find this comment in the crash report.
    */
   ipcMain.handle("hikari:dock-icon", async (e, id) => {
-    const manifest = manifests.get(e.sender.id);
-    if (!granted(manifest, "launch")) {
+    const caps = capabilities.get(e.sender.id);
+    if (!granted(caps, "launch")) {
       throw new Error('this widget did not ask to launch anything. Add "launch": true to its widget.json.');
     }
     const { entries } = readEntries(userConfig.dock);
@@ -744,8 +769,8 @@ app.whenReady().then(() => {
    * indistinguishable from an empty clipboard, and the widget would show "nothing copied".
    */
   ipcMain.handle("hikari:clipboard", (e) => {
-    const manifest = manifests.get(e.sender.id);
-    if (!granted(manifest, "clipboard")) {
+    const caps = capabilities.get(e.sender.id);
+    if (!granted(caps, "clipboard")) {
       const msg = 'this widget did not ask for the clipboard. Add "clipboard": true to its widget.json.';
       console.error(`[hikari] refused clipboard read: ${msg}`);
       throw new Error(msg);
