@@ -91,7 +91,7 @@ Two things a desktop widget forces you to get right:
 - **An `AudioContext` starts suspended without a user gesture**, and a widget never receives
   one. The host sets `autoplayPolicy: "no-user-gesture-required"` so it can start at all.
 - **`resume()` can hang rather than reject** when there is no device, so it is raced against
-  a timeout. Rendering never waits on audio setup either — one unsettled promise would
+  a timeout. Rendering never waits on audio setup either - one unsettled promise would
   otherwise leave a permanently blank widget with no error anywhere.
 
 With no input it draws a slow ambient wave and says why. Unknown must never render as flat
@@ -107,7 +107,7 @@ no API key**.
 
 Every desktop already knows what is playing, because the OS owns the media keys. Reading
 that is better than a music service's web API in four ways: nothing to register, nothing to
-refresh, it works offline, and it covers **every** player rather than one — Spotify, a
+refresh, it works offline, and it covers **every** player rather than one - Spotify, a
 browser tab, VLC.
 
 | | |
@@ -164,8 +164,8 @@ npm test
 ```
 
 Twenty-one tests: placement geometry and widget discovery: work-area anchoring against a
-taskbar, every anchor, stacked offsets, a second monitor's origin, manifest defaults, a screen-filling wallpaper ignoring the work-area inset on any monitor, and the audio band maths — logarithmic bucketing, every band owning a bin on a small transform, asymmetric smoothing, and silence reading as zero rather than noise.
-The host imports Electron at load, so the tests stub it — which is possible only because
+taskbar, every anchor, stacked offsets, a second monitor's origin, manifest defaults, a screen-filling wallpaper ignoring the work-area inset on any monitor, and the audio band maths - logarithmic bucketing, every band owning a bin on a small transform, asymmetric smoothing, and silence reading as zero rather than noise.
+The host imports Electron at load, so the tests stub it - which is possible only because
 the geometry is a pure function.
 
 ## Status
