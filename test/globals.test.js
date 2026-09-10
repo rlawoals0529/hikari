@@ -44,5 +44,5 @@ test("each library still exports through window when there is one", () => {
   const source = libs.map((f) => fs.readFileSync(path.join(LIB, f), "utf8")).join("\n");
   const win = {};
   new Function("window", source)(win);
-  assert.deepEqual(Object.keys(win).sort(), ["hikariConfig", "hikariGlsl", "hikariMood", "hikariTodo"]);
+  assert.deepEqual(Object.keys(win).sort(), ["hikariConfig", "hikariGlsl", "hikariMood", "hikariSettings", "hikariTodo"]);
 });

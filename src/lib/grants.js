@@ -30,7 +30,7 @@
  * wallpaper shader must not be able to start anything, which is the whole reason this is
  * asked for rather than assumed.
  */
-const CAPABILITIES = new Set(["clipboard", "storage", "launch"]);
+const CAPABILITIES = new Set(["clipboard", "storage", "launch", "settings"]);
 
 /**
  * The capabilities a widget asked for, taken from its `widget.json` and nowhere else.

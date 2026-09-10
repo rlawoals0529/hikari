@@ -95,6 +95,40 @@ contextBridge.exposeInMainWorld("hikari", {
     launch: (id) => ipcRenderer.invoke("hikari:launch", id),
     icon: (id) => ipcRenderer.invoke("hikari:dock-icon", id),
   },
+/**
+   * Ask the host to hide this widget.
+   *
+   * No capability, because it is not a privilege: a widget can already draw nothing, and
+   * this only reaches the window the message came from. It exists because `window.close()`
+   * would destroy the widget rather than hide it, and the host counts windows to decide
+   * whether the app has anything left to show -- so a panel closing itself with that would
+   * quit hikari when it was the last one open.
+   */
+  hide: () => ipcRenderer.invoke("hikari:hide"),
+  /**
+   * The settings surface. Rejects for a widget whose `widget.json` did not ask for it.
+   *
+   * Four verbs, and they are not four names for one `write` call: there is no method here
+   * that takes a config key, so a widget cannot write an arbitrary key under
+   * `widgets.<id>`. Each one's bounds are enforced in the main process against the nine
+   * anchors, the clamp, and the palettes that are actually on disk.
+   *
+   * **None of them can write a capability**, which is what makes it safe for a widget to
+   * hold this at all. Capabilities are read from a `widget.json` and this never touches
+   * one, so a settings widget cannot grant itself the clipboard or the launcher, and cannot
+   * grant them to anything else either.
+   *
+   * `offset` is absolute rather than relative, and that is deliberate: a relative call has
+   * to read the current value to add to it, so two calls racing on a held arrow key lose an
+   * increment and the widget drifts away from where the keys say it should be.
+   */
+  settings: {
+    read: () => ipcRenderer.invoke("hikari:settings"),
+    enable: (id, on) => ipcRenderer.invoke("hikari:settings:apply", { kind: "enabled", id, on }),
+    anchor: (id, anchor) => ipcRenderer.invoke("hikari:settings:apply", { kind: "anchor", id, anchor }),
+    offset: (id, x, y) => ipcRenderer.invoke("hikari:settings:apply", { kind: "offset", id, x, y }),
+    palette: (palette) => ipcRenderer.invoke("hikari:settings:apply", { kind: "palette", palette }),
+  },
   media: {
     playPause: () => ipcRenderer.invoke("hikari:media", "playpause"),
     next: () => ipcRenderer.invoke("hikari:media", "next"),

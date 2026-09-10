@@ -295,6 +295,81 @@
         icon: () => Promise.resolve(null),
       };
     })(),
+    hide: () => (console.log("[preview] would hide this widget"), Promise.resolve(true)),
+    /**
+     * The settings surface, against a config that lives for the length of the page.
+     *
+     * The bounds are the real ones, because they come from the real module: this calls
+     * `src/lib/settings.js`, which is the same file the host calls. So a refusal seen here
+     * is the refusal the desktop gives, rather than a second copy of the rules that can
+     * drift from them. What is *not* modelled is the capability check, for the same reason
+     * the clipboard's is not: it lives in the main process against the window the message
+     * came from, and a browser has no trusted process to put it in.
+     *
+     * `?settings=refused` stands in for a widget that did not ask for it, so the refusal
+     * path can be built and looked at.
+     */
+    settings: (() => {
+      const refused = window.hikariConfig.fromQuery(location.search).settings === "refused";
+      const deny = () =>
+        Promise.reject(new Error('this widget did not ask to change settings. Add "settings": true to its widget.json.'));
+
+      // A stand-in desktop: three widgets, one of them off, one enabled but not running.
+      let config = { palette: "rain-lantern", widgets: {} };
+      const WIDGETS = [
+        { id: "clock", anchor: "top_right", offsetX: 0, offsetY: 0 },
+        { id: "settings", anchor: "middle_center", offsetX: 0, offsetY: 0 },
+        { id: "shader", anchor: "top_left", offsetX: 0, offsetY: 0, enabled: false },
+      ];
+      const RUNNING = ["clock", "settings"];
+      const PALETTES = [
+        { name: "rain-lantern", accent: "#ff7a4d", bg: "hsl(15 10.2% 6.5%)" },
+        { name: "sakura-lake", accent: "#e0932c", bg: "hsl(34 12.9% 97%)" },
+        { name: "twilight-comet", accent: "#7c6cff", bg: "hsl(255 22% 8%)" },
+        { name: "starfall-dusk", accent: "#4dd6ff", bg: "hsl(220 28% 9%)" },
+        { name: "wisteria-alley", accent: "#a97bd6", bg: "hsl(280 20% 96%)" },
+      ];
+
+      const S = window.hikariSettings;
+      const write = (result) => {
+        if (result.error) return Promise.reject(new Error(result.error));
+        config = window.hikariConfig.merge(config, result.patch);
+        return Promise.resolve(true);
+      };
+
+      return {
+        read: () =>
+          refused
+            ? deny()
+            : Promise.resolve({
+                ...S.describe(
+                  WIDGETS.map((w) => window.hikariConfig.merge(w, config.widgets[w.id] ?? {})),
+                  RUNNING,
+                  PALETTES,
+                  config.palette,
+                ),
+                // Two bound and one taken, because the taken one is the state worth seeing:
+                // it is the failure this section of the panel exists for.
+                shortcuts: {
+                  bound: [
+                    { accelerator: "Alt+Shift+H", does: "settings" },
+                    { accelerator: "Alt+R", does: "refresh" },
+                  ],
+                  problems: ['"Ctrl+Alt+D" is already taken by another application, so toggle:decoder does nothing'],
+                },
+              }),
+        enable: (id, on) => (refused ? deny() : write(S.enabledPatch(id, on, WIDGETS.map((w) => w.id)))),
+        anchor: (id, anchor) => (refused ? deny() : write(S.anchorPatch(id, anchor, WIDGETS.map((w) => w.id)))),
+        offset: (id, x, y) => (refused ? deny() : write(S.offsetPatch(id, x, y, WIDGETS.map((w) => w.id)))),
+        palette: (name) => {
+          if (refused) return deny();
+          const choice = S.paletteChoice(name, PALETTES);
+          if (choice.error) return Promise.reject(new Error(choice.error));
+          config = window.hikariConfig.merge(config, { palette: choice.palette });
+          return Promise.resolve(true);
+        },
+      };
+    })(),
     media: {
       playPause: () => (console.log("[preview] play/pause"), Promise.resolve(true)),
       next: () => (console.log("[preview] next"), Promise.resolve(true)),

@@ -12,13 +12,14 @@ const fs = require("node:fs");
 const { providers } = require("./providers");
 const { control } = require("./providers/media");
 const { themeSources } = require("./lib/theme");
-const { widgetConfig, providerConfig, providerInterval, MIN_INTERVAL_MS } = require("./lib/config");
+const { merge, widgetConfig, providerConfig, providerInterval, MIN_INTERVAL_MS } = require("./lib/config");
 const { plan } = require("./lib/hotkeys");
 const { granted, capabilitiesFrom } = require("./lib/grants");
 const { changed } = require("./lib/watch");
 const { statePath, readState, writable } = require("./lib/store");
 const { readEntries, resolveTarget } = require("./lib/launch");
 const { readShortcuts, merge: mergeShortcuts } = require("./lib/shortcuts");
+const settingsSurface = require("./lib/settings");
 
 /**
  * Where settings, the user's theme layer and the user's own widgets live.
@@ -37,6 +38,15 @@ const HIKARI_HOME = process.env.HIKARI_HOME
 const WIDGET_DIRS = [path.join(__dirname, "..", "widgets"), path.join(HIKARI_HOME, "widgets")];
 
 const BASE_THEME = path.join(__dirname, "..", "widgets", "theme.css");
+/**
+ * Where the vendored palettes live.
+ *
+ * The listing of this directory is the allowlist: a palette name is checked against the
+ * files that are actually here rather than against a pattern, which is why there is nothing
+ * for a traversal to outsmart. Refresh it from the design system with
+ * `node scripts/vendor.mjs ../hikari --palettes-dir widgets/palettes` there.
+ */
+const PALETTE_DIR = path.join(__dirname, "..", "widgets", "palettes");
 const USER_THEME = path.join(HIKARI_HOME, "theme.css");
 const USER_CONFIG = path.join(HIKARI_HOME, "config.json");
 
@@ -55,6 +65,16 @@ const state = {};
 
 /** The user's overrides. Every layer above `widget.json` comes from here. */
 let userConfig = {};
+
+/**
+ * What happened the last time the shortcuts were bound.
+ *
+ * Kept because the console is not a surface: a global shortcut that quietly does nothing is
+ * the whole failure mode of the feature, and a line printed at startup has scrolled away by
+ * the time somebody wonders why their key does not work. The settings panel reads this, so
+ * the answer is where the question gets asked.
+ */
+let hotkeyReport = { bound: [], problems: [] };
 
 /** Cancels the running pollers. Held so a config change can restart them at a new rate. */
 let stopProviders = null;
@@ -75,6 +95,110 @@ function readUserConfig() {
     console.error(`[hikari] ${USER_CONFIG} is not valid JSON, ignoring it: ${e.message}`);
     return {};
   }
+}
+
+/**
+ * Merge a patch into `~/.hikari/config.json` and write it atomically.
+ *
+ * **Read fresh, not from `userConfig`.** The in-memory copy is whatever the last apply
+ * loaded, and the file may have been hand-edited since: writing the stale copy back would
+ * silently revert an edit somebody made in their editor a moment ago, and there would be
+ * nothing on screen to say it happened. Re-reading costs one small file and closes that.
+ *
+ * Temp file and rename, for the same reason the widget store does it: rename within one
+ * directory is atomic, so a reader sees the whole old file or the whole new one, where an
+ * in-place write leaves a truncated file after a crash or a full disk -- and a truncated
+ * config parses as no config, which is every setting the user ever chose, gone.
+ */
+function writeUserConfig(patch) {
+  const onDisk = readUserConfig();
+  const next = merge(onDisk, patch);
+  const text = `${JSON.stringify(next, null, 2)}\n`;
+
+  fs.mkdirSync(HIKARI_HOME, { recursive: true });
+  const tmp = `${USER_CONFIG}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmp, text, "utf8");
+    fs.renameSync(tmp, USER_CONFIG);
+  } catch (err) {
+    try {
+      fs.rmSync(tmp, { force: true });
+    } catch {
+      // Nothing useful to do about a failed cleanup, and throwing here would replace the
+      // real error with a worse one.
+    }
+    throw new Error(`could not write ${path.basename(USER_CONFIG)}: ${err.message}`);
+  }
+}
+
+/**
+ * The palettes on disk, by name.
+ *
+ * Read on every ask rather than cached, so dropping a file in is enough. An empty list is a
+ * real answer -- somebody may have deleted them -- and it is not an error, it just means
+ * the base theme is all there is.
+ */
+function availablePalettes() {
+  try {
+    return fs
+      .readdirSync(PALETTE_DIR)
+      .filter((f) => f.endsWith(".css"))
+      .map((f) => f.slice(0, -".css".length))
+      .sort();
+  } catch {
+    // A missing palettes directory is a checkout that was not vendored into, which is a
+    // fair state to be in. Nothing on screen changes.
+    return [];
+  }
+}
+
+/**
+ * Each palette with a colour or two out of its own file, for the picker to draw.
+ *
+ * A regex over a stylesheet, which is normally the wrong tool -- but these files are
+ * generated, every one is a single `:root` block of `--name: value;` lines, and the
+ * alternative is a CSS parser to read two declarations. A palette that does not match reads
+ * as null rather than as a guess, and the picker still lists it by name: a swatch is a
+ * convenience and a name is the thing you pick by, so a failure here must not remove a
+ * palette from the list.
+ *
+ * The renderer cannot do this itself. Widget pages are loaded from `file:`, where fetch is
+ * refused, and handing a widget the palette directory would be handing it a path.
+ */
+function paletteSwatches() {
+  const declaration = (text, name) => {
+    const m = new RegExp(`--${name}\\s*:\\s*([^;}]+)`).exec(text);
+    return m ? m[1].trim() : null;
+  };
+  return availablePalettes().map((name) => {
+    let text = "";
+    try {
+      text = fs.readFileSync(path.join(PALETTE_DIR, `${name}.css`), "utf8");
+    } catch {
+      // Listed a moment ago and unreadable now, which is somebody deleting files while the
+      // app runs. The name still works, so the palette stays pickable.
+      return { name, accent: null, bg: null };
+    }
+    return { name, accent: declaration(text, "accent"), bg: declaration(text, "bg") };
+  });
+}
+
+/**
+ * The palette the config asked for, as a path, or null.
+ *
+ * A name that is not on disk is reported and then ignored. Failing to start over a palette
+ * would be a bad trade -- the widgets are the point and they render fine without one -- but
+ * silence would leave somebody staring at the wrong colours with a config file that looks
+ * correct, so the reason is printed once per apply.
+ */
+function palettePath() {
+  if (userConfig.palette === undefined || userConfig.palette === null) return null;
+  const choice = settingsSurface.paletteChoice(userConfig.palette, availablePalettes());
+  if (choice.error) {
+    console.error(`[hikari] palette: ${choice.error}`);
+    return null;
+  }
+  return path.join(PALETTE_DIR, `${choice.palette}.css`);
 }
 
 /** Anchors are resolved against the work area, so a taskbar never overlaps a widget. */
@@ -200,6 +324,7 @@ function createWidget({ id, dir, onDisk, manifest }) {
  */
 function applyConfig() {
   const before = JSON.stringify(userConfig.providers ?? {});
+  const paletteBefore = palettePath();
   userConfig = readUserConfig();
   // Only when a provider setting actually changed. Restarting the pollers costs the CPU
   // provider its previous sample, so it reports unknown for one tick, and doing that every
@@ -252,6 +377,23 @@ function applyConfig() {
   // and I misread the screen" become the same experience.
   if (opened.length) console.log(`[hikari] opened: ${opened.join(", ")}`);
   if (closed.length) console.log(`[hikari] closed: ${closed.join(", ")}`);
+
+  /**
+   * A palette change is the one setting that needs a reload rather than a push.
+   *
+   * Every other setting reaches a widget as `hikari:configChanged`, but the theme is
+   * injected by the preload before the page runs, which is the only moment early enough for
+   * a widget to read `--accent` at startup. So there is nothing to push: the stylesheet has
+   * to be inserted into a fresh page. Done only when the palette actually changed, because
+   * reloading every widget for an unrelated nudge would be a visible flash for nothing.
+   */
+  if (palettePath() !== paletteBefore) {
+    for (const [id, entry] of registry) {
+      if (!entry.win.isDestroyed()) entry.win.webContents.reload();
+      else void id;
+    }
+    console.log(`[hikari] palette: ${userConfig.palette ?? "none"}, reloaded ${registry.size} widget(s)`);
+  }
 
   // `hotkey` is a setting like any other, and rebinding is all-or-nothing: unregisterAll
   // then register what survived, so a key belonging to a widget that was just switched off
@@ -372,10 +514,13 @@ async function perform(binding) {
  */
 function applyHotkeys(widgets) {
   globalShortcut.unregisterAll();
+  hotkeyReport = { bound: [], problems: [] };
 
   const fromWidgets = plan(widgets);
   for (const p of fromWidgets.problems) {
-    console.error(`[hikari] ${p.id}: hotkey ${JSON.stringify(p.accelerator)} not bound, ${p.reason}`);
+    const line = `${p.id}: hotkey ${JSON.stringify(p.accelerator)} not bound, ${p.reason}`;
+    hotkeyReport.problems.push(line);
+    console.error(`[hikari] ${line}`);
   }
 
   const { entries: dockEntries } = readEntries(userConfig.dock);
@@ -384,10 +529,16 @@ function applyHotkeys(widgets) {
     widgets.map((w) => w.id),
     dockEntries.map((e) => e.id),
   );
-  for (const p of fromConfig.problems) console.error(`[hikari] ${p}`);
+  for (const p of fromConfig.problems) {
+    hotkeyReport.problems.push(p);
+    console.error(`[hikari] ${p}`);
+  }
 
   const { bindings, problems } = mergeShortcuts(fromWidgets.bindings, fromConfig.bindings);
-  for (const p of problems) console.error(`[hikari] ${p}`);
+  for (const p of problems) {
+    hotkeyReport.problems.push(p);
+    console.error(`[hikari] ${p}`);
+  }
 
   for (const b of bindings) {
     const what = b.verb === "toggle" && b.from === "widget" ? b.target : `${b.verb}${b.target ? `:${b.target}` : ""}`;
@@ -404,8 +555,16 @@ function applyHotkeys(widgets) {
       console.error(`[hikari] Electron rejected "${b.accelerator}": ${e.message}`);
       continue;
     }
-    if (won) console.log(`[hikari] ${b.accelerator} -> ${what}`);
-    else console.error(`[hikari] "${b.accelerator}" is already taken by another application, so ${what} does nothing`);
+    if (won) {
+      hotkeyReport.bound.push({ accelerator: b.accelerator, does: what });
+      console.log(`[hikari] ${b.accelerator} -> ${what}`);
+    } else {
+      // The classic one. `register` returns false and throws nothing, so ignoring it gives a
+      // key that does nothing with no explanation anywhere.
+      const line = `"${b.accelerator}" is already taken by another application, so ${what} does nothing`;
+      hotkeyReport.problems.push(line);
+      console.error(`[hikari] ${line}`);
+    }
   }
 }
 
@@ -556,7 +715,7 @@ app.whenReady().then(() => {
    * it. Bundled widgets end up with the base sheet twice, which changes nothing.
    */
   ipcMain.on("hikari:theme", (e) => {
-    e.returnValue = themeSources(BASE_THEME, USER_THEME, fs.existsSync).map((css) => {
+    e.returnValue = themeSources(BASE_THEME, palettePath(), USER_THEME, fs.existsSync).map((css) => {
       try {
         return fs.readFileSync(css, "utf8");
       } catch (err) {
@@ -640,6 +799,103 @@ app.whenReady().then(() => {
       }
       throw new Error(`could not write ${path.basename(where.path)}: ${err.message}`);
     }
+    return true;
+  });
+
+  /**
+   * Hide the window this came from.
+   *
+   * Ungated, and the reason is that it grants nothing: it resolves the *asking* window and
+   * there is no parameter, so a widget cannot hide another one. Hidden rather than closed,
+   * because closing the last window quits the app.
+   */
+  ipcMain.handle("hikari:hide", (e) => {
+    const id = registryIdFor(e.sender.id);
+    const win = id === null ? null : windows.get(id);
+    if (win && !win.isDestroyed()) win.hide();
+    return true;
+  });
+
+  /**
+   * What the settings surface draws itself from.
+   *
+   * Built out of what the host already holds -- the discovered widgets, the live registry,
+   * the palettes on disk -- rather than from a second read of the config file, so the list
+   * cannot disagree with what is on screen. That was a real risk worth designing out: a
+   * settings panel that reads the file itself would show a widget as enabled while the
+   * window it describes had failed to open.
+   */
+  ipcMain.handle("hikari:settings", (e) => {
+    const caps = capabilities.get(e.sender.id);
+    if (!granted(caps, "settings")) {
+      const msg = 'this widget did not ask to change settings. Add "settings": true to its widget.json.';
+      console.error(`[hikari] refused a settings read: ${msg}`);
+      throw new Error(msg);
+    }
+    return {
+      ...settingsSurface.describe(
+        discover().map((w) => ({ id: w.id, ...w.manifest })),
+        [...registry.keys()],
+        paletteSwatches(),
+        typeof userConfig.palette === "string" ? userConfig.palette : null,
+      ),
+      // Not part of `describe`, because a shortcut is not a setting this panel can change:
+      // it is read from the config and the manifests, and this is the report of what came of
+      // that. Shown here because it is where somebody looks when a key does nothing.
+      shortcuts: { bound: [...hotkeyReport.bound], problems: [...hotkeyReport.problems] },
+    };
+  });
+
+  /**
+   * Change one setting.
+   *
+   * Four kinds, and the renderer picks one of them by name: it cannot name a config key, so
+   * there is no call that writes an arbitrary key under `widgets.<id>`. That is the whole
+   * containment, and it is why a widget that can reach this is not thereby the most
+   * powerful widget in the app: **no branch here can write a capability.** Capabilities are
+   * read from a `widget.json`, which this never touches, so even a bug that let an
+   * arbitrary key through could not grant a wallpaper shader the clipboard.
+   *
+   * Each kind's bounds live in `src/lib/settings.js` and are pure, so the refusals are
+   * tested without a browser and without a disk.
+   */
+  ipcMain.handle("hikari:settings:apply", (e, change) => {
+    const caps = capabilities.get(e.sender.id);
+    if (!granted(caps, "settings")) {
+      const msg = 'this widget did not ask to change settings. Add "settings": true to its widget.json.';
+      console.error(`[hikari] refused a settings write: ${msg}`);
+      throw new Error(msg);
+    }
+    if (change === null || typeof change !== "object" || Array.isArray(change)) {
+      throw new Error("a settings change has to be an object");
+    }
+
+    const known = discover().map((w) => w.id);
+    let result;
+    switch (change.kind) {
+      case "enabled":
+        result = settingsSurface.enabledPatch(change.id, change.on, known);
+        break;
+      case "anchor":
+        result = settingsSurface.anchorPatch(change.id, change.anchor, known);
+        break;
+      case "offset":
+        result = settingsSurface.offsetPatch(change.id, change.x, change.y, known);
+        break;
+      case "palette": {
+        const choice = settingsSurface.paletteChoice(change.palette, availablePalettes());
+        result = choice.error ? choice : { patch: { palette: choice.palette } };
+        break;
+      }
+      default:
+        // Named rather than ignored: a typo in the kind would otherwise be a control that
+        // does nothing, which is indistinguishable from a broken app.
+        throw new Error(`"${String(change.kind)}" is not a settings change. One of: enabled, anchor, offset, palette`);
+    }
+    if (result.error) throw new Error(result.error);
+
+    writeUserConfig(result.patch);
+    applyConfig();
     return true;
   });
 

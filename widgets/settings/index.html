@@ -1,0 +1,426 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hikari - settings</title>
+<!-- Under the host these come from the preload bridge. In a browser the mock stands in,
+     and it needs the shared config module to read the query string. -->
+<!-- The mock calls the real bounds module rather than restating the rules, so a refusal
+     seen in the browser is the refusal the desktop gives. Loaded before the mock, which
+     reads it off window. -->
+<script>if(!window.hikari)document.write('<script src="../../src/lib/config.js"><\/script><script src="../../src/lib/settings.js"><\/script><script src="../../preview/mock-hikari.js"><\/script>')</script>
+<link rel="stylesheet" href="../theme.css">
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; background: transparent; }
+
+  #panel {
+    height: 100%; box-sizing: border-box; padding: 18px 20px 16px;
+    display: grid; grid-template-rows: auto 1fr auto; gap: 14px;
+    background: var(--panel); border: 1px solid var(--edge); border-radius: inherit;
+    backdrop-filter: blur(18px);
+    font: 13px/1.45 var(--font-body, "Segoe UI Variable", "Segoe UI", system-ui, sans-serif);
+    color: var(--fg);
+    text-wrap: pretty;
+  }
+
+  h1 { margin: 0; font: inherit; font-size: 10px; font-weight: 600;
+       text-transform: uppercase; letter-spacing: .1em; color: var(--dim); }
+
+  /* One scroll region, so the palette row and the close hint never leave the panel. */
+  #body { overflow-y: auto; overflow-x: hidden; display: grid; gap: 16px; align-content: start; }
+
+  section { display: grid; gap: 8px; }
+  /* `display: grid` in the rule above beats the user agent's `[hidden] { display: none }`,
+     so the detail section stayed laid out while hidden: an empty band with a divider above
+     and below it, which read as a rendering fault. Any `display` on an element that is ever
+     hidden needs this. */
+  section[hidden] { display: none; }
+  section > h2 { margin: 0; font: inherit; font-size: 10px; font-weight: 600;
+                 text-transform: uppercase; letter-spacing: .09em; color: var(--dim); }
+
+  /* A soft divider rather than a border, so two adjacent sections never stack two lines. */
+  section + section { padding-top: 14px; box-shadow: inset 0 1px 0 var(--edge); }
+
+  /* --- the widget list ------------------------------------------------------------------ */
+
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+  /* The row is the hit area and it is 40px tall, because a 13px name is not a target. */
+  li > button.row {
+    width: 100%; min-height: 40px; box-sizing: border-box;
+    display: flex; align-items: center; gap: 10px; padding: 0 8px;
+    background: none; border: 1px solid transparent; border-radius: calc(var(--radius, 10px) - 4px);
+    color: inherit; font: inherit; text-align: left; cursor: pointer;
+    transition: background-color 120ms ease-out, border-color 120ms ease-out;
+  }
+  li > button.row:hover { background: var(--raised); }
+  li > button.row[aria-current="true"] { border-color: var(--accent); }
+  li > button.row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .name { flex: 1 1 auto; }
+  .off .name { color: var(--dim); }
+
+  /* The state, as a word rather than a switch: a switch needs its own 40px target inside a
+     40px row, and the row already is the control for everything else about this widget. */
+  .state { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--dim); }
+  .state.on { color: var(--ok); }
+  .state.stopped { color: var(--warn); }
+
+  /* --- the selected widget's controls --------------------------------------------------- */
+
+  #detail { display: grid; grid-template-columns: auto auto; gap: 14px 18px;
+             justify-content: start; align-items: start; }
+
+  /* Nine cells for nine anchors, which is the whole reason it is a grid and not a dropdown:
+     the control has the shape of the thing it sets. */
+  .anchors { display: grid; grid-template-columns: repeat(3, 40px); grid-template-rows: repeat(3, 40px); gap: 2px; }
+  .anchors button {
+    padding: 0; background: none; cursor: pointer;
+    border: 1px solid var(--edge); border-radius: 3px;
+    display: grid; place-items: center;
+    transition: background-color 120ms ease-out, border-color 120ms ease-out;
+  }
+  .anchors button::after {
+    content: ""; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--dim); transition: background-color 120ms ease-out, transform 120ms ease-out;
+  }
+  .anchors button:hover::after { background: var(--fg); }
+  .anchors button[aria-pressed="true"] { border-color: var(--accent); background: var(--raised); }
+  .anchors button[aria-pressed="true"]::after { background: var(--accent); transform: scale(1.6); }
+  .anchors button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  button.toggle {
+    grid-column: 1 / -1; justify-self: start;
+    min-height: 40px; padding: 0 14px;
+    background: none; border: 1px solid var(--edge); border-radius: calc(var(--radius) - 6px);
+    color: var(--fg); font: inherit; cursor: pointer;
+    transition: border-color 120ms ease-out, background-color 120ms ease-out;
+  }
+  button.toggle:hover { background: var(--raised); border-color: var(--dim); }
+  button.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .offsets { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; }
+  .offsets label { font-size: 11px; color: var(--dim); }
+  .offsets input {
+    width: 88px; box-sizing: border-box; min-height: 40px; padding: 4px 8px;
+    background: none; border: 1px solid var(--edge); border-radius: 4px;
+    color: var(--fg); font: inherit;
+    /* The figure changes as you hold an arrow key, and proportional digits make it jitter. */
+    font-variant-numeric: tabular-nums;
+  }
+  .offsets input:focus { outline: 0; border-color: var(--accent); }
+
+  /* --- palettes ------------------------------------------------------------------------- */
+
+  .palettes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .palettes button {
+    width: 40px; height: 40px; padding: 0; cursor: pointer;
+    border: 1px solid var(--edge); border-radius: 6px;
+    display: grid; place-items: center; overflow: hidden;
+    transition: border-color 120ms ease-out, transform 120ms ease-out;
+  }
+  .palettes button:hover { transform: translateY(-1px); }
+  .palettes button[aria-pressed="true"] { border-color: var(--accent); border-width: 2px; }
+  .palettes button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  /* The dot is the palette's accent over its own background, so the swatch is the palette
+     rather than a label for one. A palette whose file gave up no colours shows its initial. */
+  .palettes .dot { width: 14px; height: 14px; border-radius: 50%; }
+  .palettes .letter { font-size: 13px; color: var(--dim); text-transform: uppercase; }
+
+  /* --- shortcuts and messages ----------------------------------------------------------- */
+
+  .keys { display: grid; gap: 4px; font-size: 12px; }
+  .keys div { display: flex; gap: 10px; align-items: baseline; }
+  .keys kbd {
+    flex: 0 0 auto; font: inherit; font-size: 11px; font-variant-numeric: tabular-nums;
+    padding: 1px 6px; border: 1px solid var(--edge); border-radius: 4px; color: var(--fg);
+  }
+  .keys .does { color: var(--dim); }
+  .keys .problem { color: var(--warn); display: block; }
+
+  .empty, .broken { color: var(--dim); font-size: 12px; }
+  .broken { color: var(--err); }
+
+  footer { display: flex; align-items: baseline; gap: 10px; font-size: 11px; color: var(--dim); }
+  footer .spacer { margin-left: auto; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+
+<div id="panel">
+  <h1>hikari</h1>
+  <div id="body">
+    <section>
+      <h2>Widgets</h2>
+      <ul id="widgets"></ul>
+    </section>
+    <section id="detail-section" hidden>
+      <div id="detail"></div>
+    </section>
+    <section>
+      <h2>Palette</h2>
+      <div class="palettes" id="palettes"></div>
+    </section>
+    <section id="keys-section">
+      <h2>Shortcuts</h2>
+      <div class="keys" id="keys"></div>
+    </section>
+  </div>
+  <footer>
+    <span id="note"></span>
+    <span class="spacer"></span>
+    <span>Esc to close</span>
+  </footer>
+</div>
+
+<script>
+(async () => {
+  const api = window.hikari;
+  const widgetsEl = document.getElementById("widgets");
+  const palettesEl = document.getElementById("palettes");
+  const keysEl = document.getElementById("keys");
+  const detailSection = document.getElementById("detail-section");
+  const detailEl = document.getElementById("detail");
+  const noteEl = document.getElementById("note");
+
+  /** The last thing the host said, shown rather than swallowed. */
+  let note = "";
+  /** Which widget's controls are open. Kept across a re-read so a change does not close it. */
+  let selected = null;
+  let shown = null;
+
+  /**
+   * The nine anchors as a 3x3 grid, in the order they are drawn.
+   *
+   * Derived from the list the host sends rather than restated here, so a tenth anchor would
+   * appear rather than be silently left out of the picker.
+   */
+  const gridOrder = (anchors) => {
+    const rows = ["top", "middle", "bottom"];
+    const cols = ["left", "center", "right"];
+    const out = [];
+    for (const r of rows) for (const c of cols) {
+      const name = `${r}_${c}`;
+      if (anchors.includes(name)) out.push(name);
+    }
+    // Anything the host knows about that this grid has no cell for still gets drawn, at the
+    // end. A picker that quietly omits a real anchor is worse than an untidy one.
+    for (const a of anchors) if (!out.includes(a)) out.push(a);
+    return out;
+  };
+
+  const label = (anchor) => anchor.replace("_", " ");
+
+  /** Run a change, keep whatever the host said about it, then redraw from a fresh read. */
+  async function apply(fn) {
+    note = "";
+    try {
+      await fn();
+    } catch (e) {
+      // The host refuses things on purpose: an anchor that is not one of the nine, a palette
+      // that is not on disk. Showing the reason is the difference between a control that is
+      // bounded and one that is broken.
+      note = e.message;
+    }
+    await refresh();
+  }
+
+  function drawWidgets() {
+    widgetsEl.replaceChildren();
+    if (shown.widgets.length === 0) {
+      const p = document.createElement("li");
+      p.className = "empty";
+      p.textContent = "No widgets found.";
+      widgetsEl.appendChild(p);
+      return;
+    }
+    for (const w of shown.widgets) {
+      const li = document.createElement("li");
+      if (!w.enabled) li.className = "off";
+
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "row";
+      row.setAttribute("aria-current", String(w.id === selected));
+
+      const name = document.createElement("span");
+      name.className = "name";
+      // textContent, never innerHTML: an id is a directory name and this is a widget the
+      // user may not have written.
+      name.textContent = w.id;
+
+      const state = document.createElement("span");
+      state.className = "state";
+      if (!w.enabled) state.textContent = "off";
+      else if (w.running) { state.textContent = "on"; state.classList.add("on"); }
+      else {
+        // Enabled and not running means it failed to open or has not opened yet, and that is
+        // worth seeing rather than smoothing into "on".
+        state.textContent = "not running";
+        state.classList.add("stopped");
+      }
+
+      row.append(name, state);
+      row.addEventListener("click", () => {
+        selected = w.id === selected ? null : w.id;
+        draw();
+      });
+      li.appendChild(row);
+      widgetsEl.appendChild(li);
+    }
+  }
+
+  function drawDetail() {
+    const w = shown.widgets.find((x) => x.id === selected);
+    detailSection.hidden = !w;
+    if (!w) return;
+    detailEl.replaceChildren();
+
+    const anchors = document.createElement("div");
+    anchors.className = "anchors";
+    for (const a of gridOrder(shown.anchors)) {
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.setAttribute("aria-pressed", String(a === w.anchor));
+      cell.setAttribute("aria-label", label(a));
+      cell.title = label(a);
+      cell.addEventListener("click", () => apply(() => api.settings.anchor(w.id, a)));
+      anchors.appendChild(cell);
+    }
+
+    const offsets = document.createElement("div");
+    offsets.className = "offsets";
+    const fields = {};
+    for (const axis of ["x", "y"]) {
+      const id = `off-${axis}`;
+      const lab = document.createElement("label");
+      lab.setAttribute("for", id);
+      lab.textContent = axis;
+      const input = document.createElement("input");
+      input.type = "number";
+      input.id = id;
+      input.step = "4";
+      input.min = String(-shown.maxOffset);
+      input.max = String(shown.maxOffset);
+      input.value = String(axis === "x" ? w.offsetX : w.offsetY);
+      fields[axis] = input;
+      offsets.append(lab, input);
+    }
+    // Sent on change rather than on every keystroke: typing "-120" passes through "-1",
+    // which would walk the widget across the screen on the way to where it is going.
+    const send = () => apply(() => api.settings.offset(w.id, Number(fields.x.value), Number(fields.y.value)));
+    for (const input of Object.values(fields)) {
+      input.addEventListener("change", send);
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+    }
+
+    const onOff = document.createElement("button");
+    onOff.type = "button";
+    onOff.className = "toggle";
+    onOff.textContent = w.enabled ? `Turn ${w.id} off` : `Turn ${w.id} on`;
+    onOff.addEventListener("click", () => apply(() => api.settings.enable(w.id, !w.enabled)));
+
+    detailEl.append(anchors, offsets, onOff);
+  }
+
+  function drawPalettes() {
+    palettesEl.replaceChildren();
+    if (shown.palettes.length === 0) {
+      const p = document.createElement("span");
+      p.className = "empty";
+      p.textContent = "None vendored.";
+      palettesEl.appendChild(p);
+      return;
+    }
+    for (const p of shown.palettes) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(p.name === shown.palette));
+      b.setAttribute("aria-label", p.name);
+      b.title = p.name;
+      if (p.bg) b.style.background = p.bg;
+      if (p.accent) {
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        dot.style.background = p.accent;
+        b.appendChild(dot);
+      } else {
+        // No colours came out of the file, so the name carries it. Still pickable, which is
+        // the point: a swatch is a convenience and the name is what you choose by.
+        const letter = document.createElement("span");
+        letter.className = "letter";
+        letter.textContent = p.name.slice(0, 1);
+        b.appendChild(letter);
+      }
+      b.addEventListener("click", () => apply(() => api.settings.palette(p.name)));
+      palettesEl.appendChild(b);
+    }
+  }
+
+  function drawKeys() {
+    keysEl.replaceChildren();
+    const { bound = [], problems = [] } = shown.shortcuts ?? {};
+    for (const b of bound) {
+      const row = document.createElement("div");
+      const key = document.createElement("kbd");
+      key.textContent = b.accelerator;
+      const does = document.createElement("span");
+      does.className = "does";
+      does.textContent = b.does;
+      row.append(key, does);
+      keysEl.appendChild(row);
+    }
+    for (const p of problems) {
+      // The whole reason this section exists. A key that is taken by another application
+      // silently does nothing, and the startup line has long since scrolled away.
+      const row = document.createElement("div");
+      const span = document.createElement("span");
+      span.className = "problem";
+      span.textContent = p;
+      row.appendChild(span);
+      keysEl.appendChild(row);
+    }
+    if (bound.length === 0 && problems.length === 0) {
+      const p = document.createElement("div");
+      p.className = "empty";
+      p.textContent = "None bound.";
+      keysEl.appendChild(p);
+    }
+  }
+
+  function draw() {
+    drawWidgets();
+    drawDetail();
+    drawPalettes();
+    drawKeys();
+    noteEl.textContent = note;
+    noteEl.className = note ? "broken" : "";
+  }
+
+  async function refresh() {
+    try {
+      shown = await api.settings.read();
+    } catch (e) {
+      document.getElementById("body").replaceChildren(
+        Object.assign(document.createElement("div"), { className: "broken", textContent: e.message }),
+      );
+      return;
+    }
+    if (selected && !shown.widgets.some((w) => w.id === selected)) selected = null;
+    draw();
+  }
+
+  // Esc closes, which is what a panel summoned by a key should answer to. The window
+  // belongs to the host, so this asks rather than tries: `window.close()` on a widget would
+  // destroy it, and the host counts windows to decide whether to quit.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") api.hide?.();
+  });
+
+  // Re-read whenever the panel is summoned: a widget may have crashed, or the config may
+  // have been hand-edited, since the last time it was on screen.
+  api.onShown?.(() => refresh());
+
+  await refresh();
+})();
+</script>

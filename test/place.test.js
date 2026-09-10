@@ -73,12 +73,18 @@ test("discover finds the bundled widgets and skips a disabled one", () => {
     "dock",
     "media",
     "nowplaying",
+    "settings",
     "shader",
     "stats",
     "system",
     "todo",
     "weather",
   ]);
+  // `widgets/palettes/` sits alongside them and is not one: it holds the vendored palette
+  // stylesheets and has no widget.json, so discover walks past it. Said out loud because
+  // the alternative -- a directory of CSS files loaded as a widget -- would be a window
+  // that opens and shows nothing.
+  assert.ok(!found.includes("palettes"));
 });
 
 test("fill:screen covers the whole display, not the work area", () => {
