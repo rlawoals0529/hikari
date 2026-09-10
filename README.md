@@ -285,6 +285,45 @@ samples land inside one tick. The widgets render `--` for that.
 A fabricated `0%` is indistinguishable from a genuinely idle machine, and it is the reading
 a person acts on.
 
+## Tools that live here as overlays
+
+A tool with its own repository can be hosted here as a widget you summon with a key. The
+first is [decoder](https://github.com/rlawoals0529/decoder): copy a token, press
+`Alt+Space`, and it is already decoded, because the host reads the clipboard and pushes it
+in the moment the window is shown.
+
+```bash
+# in the tool's own repository
+npm run build
+
+# here
+node scripts/sync-tool.mjs decoder ../decoder
+node scripts/sync-tool.mjs decoder ../decoder --check   # is the copy current?
+```
+
+**What lands here is the built output and nothing else.** No source, no config, and above
+all no second copy of the logic. The alternative that keeps suggesting itself is
+reimplementing the tool as a plain script for hikari's no-bundler world, and that produces a
+hand-synced mirror: two implementations of one thing, drifting, with no test that they
+agree. A widget frames the tool's own `dist/` in an iframe and passes it one message.
+
+`widgets/*/app/` is **not committed**, and the reason is worth stating. Minified build
+output in a second repository means two copies that can disagree with nothing to say which
+is current, and every upstream build rewrites every hashed filename, so the history would
+grow by the whole app each time. A widget whose app is missing says which command to run
+rather than showing a blank window, and `--check` is what a CI job would use.
+
+### The one risk in this, and it was measured
+
+The tool's own page carries a strict Content-Security-Policy, and inside a widget it is
+loaded from a `file://` URL. `script-src 'self'` resolving differently for a file origin
+would have meant a separate Electron-targeted build for every tool.
+
+Checked in the real host rather than reasoned about: the policy is present on the framed
+page, the app's own scripts run, the clipboard reaches its input, and a `fetch` from inside
+the overlay is refused with `connect-src` named as the directive. A tool that promises it
+cannot reach the network keeps that promise here too.
+
 ## Settings live outside the repo
 
 `widget.json` is the widget author's defaults. Yours go in `~/.hikari/config.json`, keyed

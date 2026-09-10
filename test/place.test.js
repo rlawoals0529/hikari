@@ -60,8 +60,20 @@ test("defaults apply when a manifest omits everything", () => {
 });
 
 test("discover finds the bundled widgets and skips a disabled one", () => {
+  // Written out rather than counted, so adding a widget is a deliberate edit here. That is
+  // the point: a count would have quietly absorbed a new folder, and a folder appearing in
+  // `widgets/` by accident is exactly the thing worth noticing.
   const found = discover().map((w) => w.id).sort();
-  assert.deepStrictEqual(found, ["audio-visualizer", "clock", "companion", "media", "nowplaying", "shader", "stats"]);
+  assert.deepStrictEqual(found, [
+    "audio-visualizer",
+    "clock",
+    "companion",
+    "decoder",
+    "media",
+    "nowplaying",
+    "shader",
+    "stats",
+  ]);
 });
 
 test("fill:screen covers the whole display, not the work area", () => {

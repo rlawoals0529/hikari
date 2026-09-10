@@ -1,0 +1,106 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hikari - decoder</title>
+<!-- Under the host these come from the preload bridge. In a browser the mock stands in,
+     and it needs the shared config module to read the query string. -->
+<script>if(!window.hikari)document.write('<script src="../../src/lib/config.js"><\/script><script src="../../preview/mock-hikari.js"><\/script>')</script>
+<link rel="stylesheet" href="../theme.css">
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; background: transparent; }
+  /* The frame is the widget's, not the app's: rounded, tinted, and the app fills it.
+     Two borders here would be one too many, so the app inside draws none. */
+  #frame {
+    position: fixed; inset: 0;
+    display: grid; grid-template-rows: auto 1fr;
+    background: color-mix(in srgb, var(--bg, #0b0b11) 92%, transparent);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    overflow: hidden;
+    backdrop-filter: blur(20px);
+  }
+  /* One line of chrome, and it exists to say two things: which tool this is, and the key
+     that dismisses it. Nothing else, because everything else is the tool. */
+  #bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px;
+    font: 11px/1 var(--font-body, system-ui, sans-serif);
+    color: var(--dim);
+    border-bottom: 1px solid var(--edge);
+    /* The bar is the drag handle. An overlay you cannot move is an overlay that eventually
+       sits on top of the thing you needed to see. */
+    -webkit-app-region: drag;
+  }
+  #bar b { color: var(--fg); font-weight: 600; letter-spacing: .02em; }
+  #bar .key {
+    margin-left: auto;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    -webkit-app-region: no-drag;
+  }
+  iframe { border: 0; width: 100%; height: 100%; display: block; }
+  #missing {
+    display: grid; place-items: center; padding: 32px;
+    font: 13px/1.7 var(--font-body, system-ui, sans-serif);
+    color: var(--dim); text-align: center;
+  }
+  #missing code { font-family: var(--font-mono, monospace); color: var(--accent-2); }
+</style>
+<div id="frame">
+  <div id="bar"><b>decoder</b> <span id="hint">paste anything</span> <span class="key" id="key"></span></div>
+  <div id="host"></div>
+</div>
+<script>
+(async () => {
+  const cfg = (await window.hikari.config()) ?? {};
+  const host = document.getElementById("host");
+  document.getElementById("key").textContent = cfg.hotkey ? `${cfg.hotkey} to hide` : "";
+
+  // The app is the tool's own built output, synced in rather than reimplemented. If it is
+  // not there, say what to run: a blank window with no message is the worst outcome, and
+  // "the build has not been synced" is not guessable from an empty frame.
+  const res = await fetch("./app/index.html", { method: "HEAD" }).catch(() => null);
+  if (!res || !res.ok) {
+    host.innerHTML =
+      '<div id="missing"><span>The decoder build is not here yet.<br><br>' +
+      'Run <code>node scripts/sync-tool.mjs decoder ../decoder</code><br>' +
+      'after building it in its own repository.</span></div>';
+    return;
+  }
+
+  // embed=1 turns off the app's title and its explanation, and turns on the one message it
+  // listens for. Without that parameter it registers no listener at all.
+  const frame = document.createElement("iframe");
+  frame.src = "./app/index.html?embed=1";
+  frame.title = "decoder";
+  host.appendChild(frame);
+
+  /**
+   * Push the clipboard in when the overlay is summoned.
+   *
+   * This is the whole reason a desktop build exists: copy a token, press the key, and it is
+   * already decoded. The browser build has no clipboard access at all and asks for none.
+   *
+   * targetOrigin is "*" because it has to be. The app is loaded from a file URL, whose
+   * origin is the string "null", so there is no origin to name. What makes that safe is the
+   * direction: text goes in and nothing comes back out, so the message cannot be used to
+   * read anything.
+   */
+  async function feed() {
+    if (cfg.clipboard !== true) return;
+    try {
+      const text = await window.hikari.clipboard.readText();
+      if (typeof text === "string" && text.trim() !== "") {
+        frame.contentWindow?.postMessage({ type: "hikari:paste", text }, "*");
+      }
+    } catch (e) {
+      // Refused because the manifest did not ask. Not fatal: the tool still works, you just
+      // paste into it yourself, so this is a note rather than a failure on screen.
+      console.warn("[hikari] decoder: no clipboard access,", e.message);
+    }
+  }
+
+  // On show, not on load. A widget that reads the clipboard once at startup reads it at the
+  // wrong moment: the interaction is copy something, then press the key.
+  window.hikari.onShown?.(feed);
+  frame.addEventListener("load", feed, { once: true });
+})();
+</script>

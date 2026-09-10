@@ -1,3 +1,10 @@
 node_modules
 dist
 .DS_Store
+
+# Synced tool builds. `scripts/sync-tool.mjs` writes these from a tool's own repository,
+# and they are deliberately not committed: minified build output in a second repo means two
+# copies that can disagree with nothing to say which is current, and every upstream build
+# rewrites every hashed filename, so the history would grow by the whole app each time.
+# A widget with no app says which command to run rather than showing a blank window.
+widgets/*/app/

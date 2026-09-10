@@ -1,0 +1,11 @@
+{
+  "name": "decoder",
+  "hotkey": "Alt+Space",
+  "startHidden": true,
+  "interactive": true,
+  "clipboard": true,
+  "anchor": "middle_center",
+  "width": 860,
+  "height": 560,
+  "movable": true
+}
