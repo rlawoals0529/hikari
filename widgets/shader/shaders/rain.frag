@@ -1,4 +1,4 @@
-// Rain — drops running down a pane, with the streak each one leaves behind.
+// Rain: drops running down a pane, with the streak each one leaves behind.
 //
 // The trail is the whole effect. A drop without one is a moving dot; the tapering streak
 // above it is what the eye reads as water on glass.
