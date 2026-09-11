@@ -7,9 +7,17 @@
   --bg: #0b0b11;
   --accent: #ff4d8d;
   --accent-2: #4dd6ff;
-  --panel: rgba(14, 14, 20, 0.72);
+  /* 0.85, not 0.72, and the reason is that these float over a wallpaper nobody chose.
+     A see-through panel composites with whatever is behind it, so the contrast of every
+     word on it depends on the desktop: --dim on this panel measured 2.4:1 over a light
+     backdrop, against the 4.5:1 that WCAG AA asks for. At 0.85 the worst case, a white
+     wallpaper, is 5.5:1, and it is still see-through enough for the blur behind it to
+     read as glass. */
+  --panel: rgba(14, 14, 20, 0.85);
   --fg: #edeef5;
-  --dim: #8d8da6;
+  /* Lighter than it was, for the same reason. Secondary text is still secondary at this
+     value; it is just legible on somebody else's wallpaper as well as on a dark one. */
+  --dim: #a8a8c4;
   --edge: rgba(255, 255, 255, 0.08);
   --warn: #f5a94f;
   /* Every vendored palette defines these three, so the base has to as well or picking a

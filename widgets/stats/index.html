@@ -6,8 +6,13 @@
   .row { display: grid; grid-template-columns: 34px 1fr 44px; align-items: center; gap: 10px; margin-top: 12px; }
   .row:first-of-type { margin-top: 6px; }
   .bar { height: 6px; border-radius: 3px; background: rgba(255,255,255,.09); overflow: hidden; }
-  .bar i { display: block; height: 100%; width: 0;
-    background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width .45s ease; }
+  /* Full width, scaled by a transform, rather than a width that is animated.
+     Animating width makes the browser lay out and paint on every frame of every update;
+     a transform is composited, so the same movement costs one property on the GPU. The
+     visual result is identical because the fill is a gradient that spans the bar. */
+  .bar i { display: block; height: 100%; width: 100%;
+    transform: scaleX(0); transform-origin: left center; will-change: transform;
+    background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: transform .45s ease; }
   .bar.hot i { background: linear-gradient(90deg, var(--accent), #ff2d55); }
   .v { text-align: right; font-variant-numeric: tabular-nums; }
   .host { margin-top: 12px; }
@@ -21,7 +26,8 @@
   const set = (barId, fillId, valId, pct) => {
     const v = document.getElementById(valId);
     if (pct == null) { v.textContent = "--"; return; }   // unknown stays unknown
-    document.getElementById(fillId).style.width = pct + "%";
+    // scaleX takes a fraction, where width took a percentage.
+    document.getElementById(fillId).style.transform = `scaleX(${pct / 100})`;
     document.getElementById(barId).classList.toggle("hot", pct >= 85);
     v.textContent = Math.round(pct) + "%";
   };
