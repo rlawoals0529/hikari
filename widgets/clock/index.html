@@ -8,7 +8,9 @@
      dropped to a second line and the panel clipped it. The manifest is wide enough now; this
      stops a longer locale doing the same thing again. */
   .time { font-size: 40px; font-weight: 300; letter-spacing: 1px; font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
-  .time .sec { font-size: 17px; color: var(--accent); margin-left: 4px; }
+  /* --accent-text, not --accent: the accent is a fill colour, and as 17px words over a
+     translucent panel on a light wallpaper it measured 4.06:1. */
+  .time .sec { font-size: 17px; color: var(--accent-text, var(--accent)); margin-left: 4px; }
   .sub { margin-top: 7px; display: flex; gap: 8px; align-items: baseline; }
   .sub .day { color: var(--accent-2); }
 </style>

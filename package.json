@@ -8,7 +8,8 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.js",
-    "preview": "npx --yes http-server -p 8910 -s ."
+    "preview": "npx --yes http-server -p 8910 -s .",
+    "e2e": "playwright test"
   },
   "keywords": [
     "desktop",
@@ -21,6 +22,7 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "electron": "^33.2.1"
   }
 }

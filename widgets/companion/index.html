@@ -20,10 +20,20 @@
   svg [hidden] { display: none; }
   /* The label is the honest half: the drawing is a mood, this says which reading produced
      it. Without it a sleeping cat and a broken provider look the same. */
+  /* A ground of its own, because this widget has none.
+     Everything else here floats free over the desktop, which is the point of the character -
+     but the label is words, and words on a wallpaper nobody chose are unreadable about half
+     the time: --fg on a white wallpaper measured 1.16:1 and the percentage 2.32:1. The pill
+     is the smallest thing that gives them a surface, and --panel is the same translucent one
+     every other widget reads on. */
   #label {
     margin-top: 4px; text-align: center;
     color: var(--dim); letter-spacing: .08em; text-transform: uppercase;
     font-size: 9.5px;
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 999px;
+    padding: 3px 8px;
   }
   #label b { color: var(--fg); font-weight: 600; letter-spacing: .04em; }
   #label[hidden] { display: none; }

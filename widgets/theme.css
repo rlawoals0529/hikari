@@ -27,6 +27,25 @@
      sits between --ok and --warn. */
   --raised: rgba(255, 255, 255, 0.06);
   --ok: #6fd08c;
+  /*
+   * The readable variants, for the same reason the vendored palettes carry them: --accent is
+   * a FILL colour and a brand mark, and holding it to text contrast would repaint the theme
+   * to satisfy a caption.
+   *
+   * Measured against the ground these are actually read on, which here is --panel composited
+   * over a wallpaper nobody chose: #323237 over white, #0c0c11 over black. --accent as words
+   * came to 4.06:1 over white, which is why the clock's seconds and the calendar's "now" were
+   * the two things on those widgets you could not read.
+   *
+   *   --accent-text  4.80:1 over white, 7.35:1 over black
+   *   --on-accent    6.26:1 on the accent fill itself
+   *   --edge-strong  3.00:1 over white, 4.59:1 over black
+   *
+   * A palette overrides all three with its own, computed against its own opaque surfaces.
+   */
+  --accent-text: #ff6ca1;
+  --on-accent: #0b0b11;
+  --edge-strong: #7a7a84;
   --caution: #f5c74f;
   /* Consumed by the shader's fault panel. It was read and never defined, so it always
      took its fallback and no theme could reach it. */

@@ -12,7 +12,13 @@
   #frame {
     position: fixed; inset: 0;
     display: grid; grid-template-rows: auto 1fr;
-    background: color-mix(in srgb, var(--bg, #0b0b11) 92%, transparent);
+    /* --panel, not --bg mixed down to 92%.
+       A palette's --dim is chosen to clear 4.5:1 against that palette's --bg at full strength,
+       so thinning the ground spends a margin that was already spent: a light palette over a
+       dark wallpaper came to 4.10:1 on this frame's own chrome. --panel is the token that was
+       designed to be translucent over a wallpaper nobody chose, and a palette replaces it with
+       an opaque surface, which is where its own contrast guarantee holds. */
+    background: var(--panel);
     border: 1px solid var(--edge);
     border-radius: 10px;
     overflow: hidden;
