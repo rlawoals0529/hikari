@@ -45,13 +45,18 @@ export interface Probe {
   /** `TAG.class` of each of those, so a caller can name an element that must have been seen. */
   classes: string[];
   /**
-   * How many distinct grounds the sweep actually painted.
+   * How many of the palettes actually painted something different.
    *
-   * Evidence that applying a palette did something. Without it a sweep that silently fails to
-   * switch - the wrong `apply` for how this page loads its palettes - measures one palette
-   * however many times, and reports that as full coverage. One is the number to refuse.
+   * Evidence that applying a palette did anything at all. Without it a sweep that silently
+   * fails to switch - the wrong `apply` for how this page loads its palettes, or a scoped
+   * stylesheet that stopped being scoped - measures one palette however many times and
+   * reports that as full coverage.
+   *
+   * A FINGERPRINT per palette, not a count of grounds: one palette paints several surfaces,
+   * so "more than one ground" is satisfied by a sweep that never switched. Ask for a number
+   * near the number of palettes.
    */
-  distinctGrounds: number;
+  distinctPalettes: number;
 }
 
 export interface ProbeOptions {
@@ -97,7 +102,7 @@ export async function probeContrast(
   let styles = 0;
   let samples: string[] = [];
   let classes: string[] = [];
-  const grounds = new Set<string>();
+  const fingerprints = new Set<string>();
 
   for (const theme of themes) {
     await apply(page, theme.id);
@@ -230,6 +235,10 @@ export async function probeContrast(
       classes = rows.map((r) => r.cls);
     }
 
+    // Every colour this palette painted, in one string. Two palettes that produce the same
+    // one are the same palette, whatever the loop thinks it applied.
+    fingerprints.add(rows.map((r) => `${r.color}|${r.bg}`).sort().join(";"));
+
     for (const row of rows) {
       const fg = parse(row.color);
       const bg = parse(row.bg);
@@ -238,7 +247,6 @@ export async function probeContrast(
       // a notation the parser did not know, and an unreadable colour counted as no finding.
       if (!fg || !bg) throw new Error(`unreadable colour "${row.color}" on "${row.bg}" at ${row.cls}`);
       measured++;
-      grounds.add(row.bg);
       const alpha = fg[3] * row.opacity;
       const flat = alpha < 1 ? blend([fg[0], fg[1], fg[2], alpha], bg) : [fg[0], fg[1], fg[2]];
       const ratio = contrast(flat, [bg[0], bg[1], bg[2]]);
@@ -250,7 +258,7 @@ export async function probeContrast(
     }
   }
 
-  return { failures, measured, styles, samples, classes, distinctGrounds: grounds.size };
+  return { failures, measured, styles, samples, classes, distinctPalettes: fingerprints.size };
 }
 
 export const describeFailures = (f: Reading[]): string =>

@@ -79,9 +79,9 @@ for (const widget of WIDGETS) {
         return;
       }
 
-      // The sweep has to have actually swept. One ground across fifteen palettes means the
-      // palettes never applied, and every number above is the same palette measured again.
-      expect(probe.distinctGrounds, "the palettes did not change anything").toBeGreaterThan(1);
+      // The sweep has to have actually swept. Fewer distinct paintings than palettes means
+      // some never applied, and those numbers are another palette measured twice.
+      expect(probe.distinctPalettes, "some palettes painted nothing of their own").toBe(THEMES.length);
       expect(probe.failures, describeFailures(probe.failures)).toEqual([]);
     });
   }
