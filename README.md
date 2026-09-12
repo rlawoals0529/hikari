@@ -9,6 +9,10 @@ Linux has [AGS](https://aylur.github.io/astal/) and [eww](https://github.com/elk
 where a widget is a few lines of code and the whole desktop is themeable. Windows has
 Rainmeter, where a widget is INI and Lua. This is the first shape, for any OS.
 
+## Try it
+
+**[rlawoals0529.github.io/hikari](https://rlawoals0529.github.io/hikari/)** - the bundled widgets, running in a browser
+
 ## Install
 
 ```bash
