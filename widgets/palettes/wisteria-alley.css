@@ -6,14 +6,17 @@
   --panel: hsl(257 41.5% 99.5%);
   --raised: hsl(257 27.0% 94%);
   --accent: #8b6fd1;
-  --accent-2: #3f9ecf;
+  --accent-2: #26729a;
   --fg: #221f3a;
-  --dim: #948fb8;
+  --dim: #6c659d;
   --edge: #c1bce6;
-  --ok: #3f8f6a;
-  --warn: #d19a4a;
-  --err: #c2493b;
-  --caution: #d19a4a;
+  --ok: #357859;
+  --warn: #8f6324;
+  --err: #b94538;
+  --caution: #8f6324;
+  --accent-text: #7756c9;
+  --on-accent: #171528;
+  --edge-strong: #8e85d2;
   --radius: 12px;
   color-scheme: light;
 }

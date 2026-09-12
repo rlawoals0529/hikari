@@ -14,6 +14,9 @@
   --warn: #ffb56b;
   --err: #ff6b6b;
   --caution: #ffb56b;
+  --accent-text: #ff8f6b;
+  --on-accent: #12100f;
+  --edge-strong: #7c574b;
   --radius: 12px;
   color-scheme: dark;
 }

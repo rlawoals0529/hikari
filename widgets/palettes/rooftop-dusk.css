@@ -8,12 +8,15 @@
   --accent: #f2789e;
   --accent-2: #5fa0b0;
   --fg: #f5eef2;
-  --dim: #a07b87;
+  --dim: #a5828d;
   --edge: #805260;
   --ok: #6fcf97;
   --warn: #ffb066;
   --err: #ff6b6b;
   --caution: #ffb066;
+  --accent-text: #f2789e;
+  --on-accent: #130e10;
+  --edge-strong: #815260;
   --radius: 12px;
   color-scheme: dark;
 }
