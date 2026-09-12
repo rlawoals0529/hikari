@@ -1,13 +1,26 @@
 <!doctype html>
 <meta charset="utf-8"><title>hikari - widget preview</title>
 <style>
-  body { margin:0; min-height:100vh; padding:44px; box-sizing:border-box;
+  /* The column has to fit the WIDEST widget, not the narrowest.
+     It was minmax(240px, 1fr) while the media widget is 380px with a fixed width attribute, so
+     that widget overflowed its track and pushed the document 58px past the viewport. Every other
+     widget then sat left-aligned in a column sized for something else, which is where the ragged
+     75 / 74 / 45 gaps came from. 380 is the real floor. */
+  :root { --widest: 380px; --gutter: clamp(20px, 3vw, 44px); }
+
+  body { margin:0; min-height:100vh; padding:var(--gutter); box-sizing:border-box;
          background:#0b0b11 radial-gradient(1100px 600px at 78% -8%, #241436, #0b0b11) no-repeat;
          font:13px system-ui,sans-serif; color:#6d6d86;
-         display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:26px; align-content:start; }
-  figure { margin:0; }
-  iframe { border:0; display:block; }
-  figcaption { margin-top:10px; font-size:12px; }
+         display:grid;
+         grid-template-columns:repeat(auto-fit, minmax(min(var(--widest), 100%), 1fr));
+         gap:34px 26px; align-content:start; }
+
+  /* Each widget keeps its real size, because these are desktop widgets and scaling one would
+     misrepresent it. It is centred in its track instead, so the spacing reads as even even
+     though every widget is a different width. */
+  figure { margin:0; display:flex; flex-direction:column; align-items:center; }
+  iframe { border:0; display:block; max-width:100%; }
+  figcaption { margin-top:10px; font-size:12px; text-align:center; max-width:var(--widest); }
   h1 { grid-column:1/-1; margin:0 0 4px; font-size:15px; color:#d8d8e6; font-weight:600; }
   p.note { grid-column:1/-1; margin:0 0 10px; }
 </style>
