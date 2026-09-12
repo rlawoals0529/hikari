@@ -3,6 +3,15 @@ on:
   push: { branches: [main] }
   pull_request:
 jobs:
+  preview-sizes:
+    name: Preview matches the manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node scripts/check-preview-sizes.mjs
+
   test:
     runs-on: ubuntu-latest
     strategy:

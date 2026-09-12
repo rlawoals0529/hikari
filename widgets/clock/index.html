@@ -3,7 +3,11 @@
      and it needs the shared config module to read the query string. -->
 <script>if(!window.hikari)document.write('<script src="../../src/lib/config.js"><\/script><script src="../../preview/mock-hikari.js"><\/script>')</script>
 <style>
-  .time { font-size: 40px; font-weight: 300; letter-spacing: 1px; font-variant-numeric: tabular-nums; line-height: 1; }
+  /* nowrap is load-bearing, not tidiness. The space in "10:25 PM" is a wrap opportunity, and
+     at 40px the 12-hour time plus the seconds came to 239px inside a 230px widget, so "PM"
+     dropped to a second line and the panel clipped it. The manifest is wide enough now; this
+     stops a longer locale doing the same thing again. */
+  .time { font-size: 40px; font-weight: 300; letter-spacing: 1px; font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
   .time .sec { font-size: 17px; color: var(--accent); margin-left: 4px; }
   .sub { margin-top: 7px; display: flex; gap: 8px; align-items: baseline; }
   .sub .day { color: var(--accent-2); }
