@@ -136,3 +136,70 @@ test("the result never aliases a nested object inside the override", () => {
   cfg.pos.x = 99;
   assert.equal(user.widgets.clock.pos.x, 1);
 });
+
+// --- a name out of a directory listing is not a safe object key ---------------------------
+
+test("a widget in a directory named after a prototype member keeps its manifest", () => {
+  // This was a real fault, and it was silent. `userConfig.widgets[id]` reached the
+  // prototype for `constructor` and `toString`, merge saw a function rather than a plain
+  // object and returned it whole, and the manifest was replaced: the widget ended up with
+  // `{}`, so no html, no size, no anchor, and nothing said about why it drew nothing.
+  const manifest = { html: "index.html", width: 200, anchor: "top_left" };
+  for (const id of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+    assert.deepStrictEqual(widgetConfig(manifest, { widgets: {} }, id), manifest, id);
+  }
+});
+
+test("the same for a provider name", () => {
+  for (const name of ["constructor", "toString", "valueOf"]) {
+    assert.deepStrictEqual(providerConfig({ name, defaults: { intervalMs: 1000 } }, { providers: {} }), {
+      intervalMs: 1000,
+    });
+  }
+});
+
+test("an override with that name still applies when it is really there", () => {
+  // The fix must not become a blocklist: a widget genuinely called `constructor` is
+  // configurable like any other.
+  const got = widgetConfig({ width: 200 }, { widgets: { constructor: { width: 400 } } }, "constructor");
+  assert.strictEqual(got.width, 400);
+});
+
+test("an override that is not an object is ignored rather than replacing the manifest", () => {
+  // `"widgets": {"clock": 3}` is a plausible typo, and before the fix it made the manifest
+  // the number 3.
+  for (const bad of [3, "wide", true, null, ["a"]]) {
+    assert.deepStrictEqual(widgetConfig({ width: 200 }, { widgets: { clock: bad } }, "clock"), { width: 200 }, JSON.stringify(bad));
+  }
+});
+
+test("a widgets block that is not an object is no overrides, not a throw", () => {
+  for (const bad of [3, "x", true, null, ["a"]]) {
+    assert.deepStrictEqual(widgetConfig({ width: 200 }, { widgets: bad }, "clock"), { width: 200 }, JSON.stringify(bad));
+  }
+});
+
+test("the type check is the half that fixes it", () => {
+  // Said out loud because a mutation proved it: putting the bare `bag[name]` back changes
+  // nothing, since every prototype member here is a function and a function is not a plain
+  // object. This is the assertion that turns red when the type check goes.
+  const manifest = { html: "index.html", width: 200 };
+  assert.deepStrictEqual(widgetConfig(manifest, { widgets: {} }, "constructor"), manifest);
+  assert.deepStrictEqual(widgetConfig(manifest, { widgets: { clock: 3 } }, "clock"), manifest);
+});
+
+test("and the own-property read is the half that survives a polluted prototype", () => {
+  // `__proto__` is the one prototype member that is a plain object, so it passes the type
+  // check. With nothing on Object.prototype that is harmless, because merge walks own keys
+  // and there are none -- but that is a fact about a global any dependency can change, so
+  // this pins the behaviour under exactly that condition rather than trusting it.
+  const manifest = { html: "index.html", width: 200 };
+  Object.defineProperty(Object.prototype, "width", { value: 9999, enumerable: true, configurable: true });
+  try {
+    assert.deepStrictEqual(widgetConfig(manifest, { widgets: {} }, "__proto__"), manifest);
+    assert.deepStrictEqual(widgetConfig(manifest, { widgets: {} }, "clock"), manifest);
+  } finally {
+    delete Object.prototype.width;
+  }
+  assert.ok(!("width" in Object.prototype), "the pollution must not outlive this test");
+});

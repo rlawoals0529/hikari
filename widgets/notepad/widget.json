@@ -1,0 +1,11 @@
+{
+  "name": "notepad",
+  "hotkey": "Alt+Shift+N",
+  "startHidden": true,
+  "interactive": true,
+  "clipboard": true,
+  "anchor": "middle_center",
+  "width": 720,
+  "height": 520,
+  "movable": true
+}

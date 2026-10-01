@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { granted, CAPABILITIES } = require("../src/lib/grants");
+const { granted, capabilitiesFrom, CAPABILITIES } = require("../src/lib/grants");
 
 // The refusals are the design. The grant is one line and the refusals are why the line is
 // safe, so they are what these tests are about.
@@ -33,7 +33,7 @@ test("a capability the host does not define throws, rather than reading as not a
   // Otherwise a typo in the host's own code looks like a widget that had not asked, and the
   // fix gets looked for in the manifest.
   assert.throws(() => granted({ clipbaord: true }, "clipbaord"), /unknown capability/);
-  assert.throws(() => granted({ launch: true }, "launch"), /unknown capability/);
+  assert.throws(() => granted({ netwrok: true }, "netwrok"), /unknown capability/);
 });
 
 test("prototype keys are not capabilities", () => {
@@ -44,6 +44,7 @@ test("prototype keys are not capabilities", () => {
 test("the capability list is not empty, so these tests cannot pass by covering nothing", () => {
   assert.ok(CAPABILITIES.has("clipboard"));
   assert.ok(CAPABILITIES.has("storage"));
+  assert.ok(CAPABILITIES.has("launch"));
 });
 
 test("storage is a capability, and it is not a licence to write anywhere", () => {
@@ -62,4 +63,56 @@ test("asking for one capability does not grant the other", () => {
   // round. Two names, two answers.
   assert.equal(granted({ storage: true }, "clipboard"), false);
   assert.equal(granted({ clipboard: true }, "storage"), false);
+});
+
+test("launch is a capability, and it is not a licence to run anything", () => {
+  // The sharpest one. What makes it safe is not this check, it is that the call it guards
+  // takes an id from the user's own config and has no parameter for a target: see
+  // src/lib/launch.js.
+  assert.equal(granted({ launch: true }, "launch"), true);
+  assert.equal(granted({ launch: "true" }, "launch"), false);
+  assert.equal(granted({}, "launch"), false);
+  assert.equal(granted(undefined, "launch"), false);
+});
+
+test("no capability implies any other", () => {
+  // A wallpaper shader that reads the clipboard must not thereby be able to start a program,
+  // and a dock must not be able to read the clipboard. Three names, three answers.
+  const all = ["clipboard", "storage", "launch"];
+  for (const held of all) {
+    for (const asked of all) {
+      assert.equal(granted({ [held]: true }, asked), held === asked, `${held} -> ${asked}`);
+    }
+  }
+});
+
+test("capabilities come from the widget.json and never from the merged config", () => {
+  // A real escalation path, closed. widgetConfig merges ~/.hikari/config.json over a
+  // manifest, and the host used to check the merged object, so a line in the user config
+  // could hand a wallpaper shader the clipboard and the launcher. Harmless while only a
+  // person edits that file, and not harmless the moment a widget can write it: a widget
+  // with a settings surface could grant itself everything else.
+  const onDisk = { name: "shader", layer: "wallpaper" };
+  const caps = capabilitiesFrom(onDisk);
+  for (const c of ["clipboard", "storage", "launch"]) assert.equal(granted(caps, c), false, c);
+});
+
+test("what the manifest does ask for is granted", () => {
+  const caps = capabilitiesFrom({ name: "todo", storage: true });
+  assert.equal(granted(caps, "storage"), true);
+  assert.equal(granted(caps, "clipboard"), false);
+});
+
+test("capabilitiesFrom answers for every capability, so a missing key is a false and not undefined", () => {
+  // granted() is === true, so undefined would also be false. Being explicit means the map
+  // is a complete answer rather than one that happens to behave.
+  const caps = capabilitiesFrom({});
+  assert.deepEqual(Object.keys(caps).sort(), [...CAPABILITIES].sort());
+  for (const v of Object.values(caps)) assert.equal(v, false);
+});
+
+test("capabilitiesFrom is not fooled by a truthy value or by nothing at all", () => {
+  assert.equal(granted(capabilitiesFrom({ storage: "true" }), "storage"), false);
+  assert.equal(granted(capabilitiesFrom(null), "storage"), false);
+  assert.equal(granted(capabilitiesFrom(undefined), "clipboard"), false);
 });

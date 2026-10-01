@@ -1,4 +1,4 @@
-// Starfield — three parallax layers of drifting points.
+// Starfield: three parallax layers of drifting points.
 //
 // Stars are placed by hashing cell coordinates rather than stored, so the field is
 // endless and costs no memory. Each layer moves at its own rate; that difference is the

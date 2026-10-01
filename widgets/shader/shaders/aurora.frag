@@ -1,4 +1,4 @@
-// Aurora — layered bands drifting on value noise.
+// Aurora: layered bands drifting on value noise.
 //
 // Three sheets at different speeds and scales. Depth comes from the parallax between
 // them, not from a blur: a blurred copy of the same motion still reads as one flat layer.

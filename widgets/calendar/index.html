@@ -31,7 +31,9 @@
   .at { color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
   /* All-day is not a time, so it does not get to look like one. */
   .at.allday { text-transform: lowercase; letter-spacing: .02em; }
-  .at.live { color: var(--accent); }
+  /* --accent-text, not --accent: as words over a translucent panel on a light wallpaper the
+     accent measured 4.06:1, and "now" is the one entry you are looking for. */
+  .at.live { color: var(--accent-text, var(--accent)); }
   .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .where { color: var(--dim); }
   .more { color: var(--dim); font-size: 10.5px; }

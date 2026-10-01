@@ -85,6 +85,68 @@
     ];
   })();
 
+  /**
+   * The battery, in every state the widget has to tell apart.
+   *
+   * `none` is the one that earns its place. A desktop has no battery, and the reading a
+   * naive provider gives one is 0%: a full red bar on a machine that cannot lose power. It
+   * has to be visibly a different thing from a flat battery, and a preview that never showed
+   * it would let the wrong render ship.
+   */
+  const BATTERY = [
+    { available: true, freshness: "fresh", takenAt: Date.now(), installed: true, percent: 66,
+      state: "discharging", charging: false, plugged: false, minutesRemaining: 355 },
+    { available: true, freshness: "fresh", takenAt: Date.now(), installed: true, percent: 41,
+      state: "charging", charging: true, plugged: true, minutesRemaining: 74 },
+    { available: true, freshness: "fresh", takenAt: Date.now(), installed: true, percent: 100,
+      state: "charged", charging: false, plugged: true, minutesRemaining: null },
+    // Low, on the pack, with no estimate yet. Two unknowns at once, which is what the first
+    // minute after unplugging actually looks like.
+    { available: true, freshness: "fresh", takenAt: Date.now(), installed: true, percent: 8,
+      state: "discharging", charging: false, plugged: false, minutesRemaining: null },
+    { available: true, freshness: "fresh", takenAt: Date.now(), installed: false, percent: null,
+      state: null, charging: null, plugged: true, minutesRemaining: null },
+    { available: true, freshness: "stale", takenAt: Date.now() - 6 * 60 * 1000, installed: true,
+      percent: 52, state: "discharging", charging: false, plugged: false, minutesRemaining: 190 },
+    { available: false, freshness: "expired", reason: "pmset failed: spawn pmset ENOENT" },
+  ];
+
+  /**
+   * Synthetic disk states, including a path that is not there.
+   *
+   * Round fixture values exercise rendering and error states without publishing measurements
+   * copied from a personal machine.
+   */
+  const DISK = [
+    { available: true, volumes: [
+      { path: "/", label: "/", total: 1024000000000, free: 204800000000, used: 819200000000, usage: 80 },
+    ] },
+    { available: true, volumes: [
+      { path: "/", label: "/", total: 1024000000000, free: 204800000000, used: 819200000000, usage: 80 },
+      { path: "/Volumes/Archive", label: "Archive", total: 4096000000000, free: 512000000000, used: 3584000000000, usage: 87.5 },
+    ] },
+    { available: true, volumes: [
+      { path: "/", label: "/", total: 1024000000000, free: 204800000000, used: 819200000000, usage: 80 },
+      { path: "/Volumes/Backup", label: "Backup", error: "no such path (ENOENT)" },
+    ] },
+    { available: false, reason: '"paths" under providers.disk contains 5, which is not a path', volumes: [] },
+  ];
+
+  /**
+   * Synthetic network states: up, down and unreadable.
+   *
+   * Documentation-only addresses keep the preview representative without publishing a
+   * machine's actual LAN address or hardware identifier.
+   */
+  const NETWORK = [
+    { available: true, up: true, name: "en0", address: "192.0.2.42", family: "IPv4",
+      interfaces: [{ name: "en0", address: "192.0.2.42", family: "IPv4", mac: "02:00:00:00:00:01" }],
+      rxPerSec: null, txPerSec: null },
+    { available: true, up: false, name: null, address: null, family: null, interfaces: [],
+      rxPerSec: null, txPerSec: null },
+    { available: false, up: null, reason: "the operating system listed no network interfaces" },
+  ];
+
   function snapshot() {
     tick++;
     cpu = jitter(cpu, 20, 3, 96);
@@ -99,6 +161,11 @@
       // interesting half of that widget is what it does when it does not know.
       weather: WEATHER[pinnedWeather ?? Math.floor(tick / 10) % WEATHER.length],
       calendar: CALENDAR[pinnedCalendar ?? Math.floor(tick / 10) % CALENDAR.length],
+      // The same cycling, for the same reason: each of these three has a state that only
+      // shows up when something is absent, and that is the state worth building against.
+      battery: BATTERY[pinnedBattery ?? Math.floor(tick / 8) % BATTERY.length],
+      disk: DISK[pinnedDisk ?? Math.floor(tick / 10) % DISK.length],
+      network: NETWORK[pinnedNetwork ?? Math.floor(tick / 10) % NETWORK.length],
       date: {
         time: d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
         seconds: d.getSeconds(),
@@ -108,20 +175,39 @@
     };
   }
 
-  /** A state named in the query string, or null to cycle. */
-  const pinnedWeather = (() => {
-    const want = new URLSearchParams(location.search).get("weather");
-    const i = ["fresh", "stale", "unknown"].indexOf(want);
+  /**
+   * A state named in the query string, or null to cycle.
+   *
+   * One helper rather than one closure per provider. This was two copies of the same four
+   * lines and the third provider to need it would have made it three, which is how the
+   * per-widget config merge this file replaced got to four copies with four different bugs.
+   */
+  function pin(key, names) {
+    const i = names.indexOf(new URLSearchParams(location.search).get(key));
     return i === -1 ? null : i;
-  })();
+  }
 
-  /** The same, for the calendar. `?calendar=clear` is a week with nothing in it, which is
-   *  not `?calendar=empty`, a feed with nothing in it. */
-  const pinnedCalendar = (() => {
-    const want = new URLSearchParams(location.search).get("calendar");
-    const i = ["fresh", "stale", "empty", "clear", "unavailable"].indexOf(want);
-    return i === -1 ? null : i;
-  })();
+  const pinnedWeather = pin("weather", ["fresh", "stale", "unknown"]);
+
+  /** `?calendar=clear` is a week with nothing in it, which is not `?calendar=empty`, a feed
+   *  with nothing in it. */
+  const pinnedCalendar = pin("calendar", ["fresh", "stale", "empty", "clear", "unavailable"]);
+
+  /**
+   * `?battery=none` is the desktop, which is not `?battery=low`.
+   *
+   * Named rather than numbered, because the whole point of these fixtures is that two of
+   * them look alike on screen and mean opposite things, and an index would not say which.
+   */
+  const pinnedBattery = pin("battery", ["discharging", "charging", "charged", "low", "none", "stale", "unavailable"]);
+
+  /** `?disk=missing` is one path that is not there beside one that is, which is not
+   *  `?disk=unavailable`, a `paths` setting that cannot be read at all. */
+  const pinnedDisk = pin("disk", ["one", "two", "missing", "unavailable"]);
+
+  /** `?network=down` is a machine with no routable address. `?network=unavailable` is this
+   *  provider failing, and the widget must not render the second as the first. */
+  const pinnedNetwork = pin("network", ["up", "down", "unavailable"]);
 
   const subs = new Set();
   setInterval(() => { const s = snapshot(); subs.forEach((f) => f(s)); }, 1000);
@@ -179,6 +265,108 @@
     clipboard: {
       readText: () => Promise.resolve(window.hikariConfig.fromQuery(location.search).clipboardText ?? ""),
     },
+    /**
+     * The dock, in the three states it has.
+     *
+     * No icons: `app.getFileIcon` is an Electron call and a browser has no equivalent, so
+     * the preview always shows the letter fallback. That is worth knowing when building it,
+     * because the letter is what a real dock shows for every URI entry too.
+     */
+    dock: (() => {
+      const which = window.hikariConfig.fromQuery(location.search).dock ?? "some";
+      const SETS = {
+        some: [
+          { id: "steam", label: "Steam", kind: "uri" },
+          { id: "code", label: "Visual Studio Code", kind: "path" },
+          { id: "spotify", label: "Spotify", kind: "path" },
+          { id: "steam-440", label: "Team Fortress 2", kind: "uri" },
+        ],
+        empty: [],
+      };
+      return {
+        entries: () =>
+          which === "refused"
+            ? Promise.reject(new Error('this widget did not ask to launch anything. Add "launch": true to its widget.json.'))
+            : Promise.resolve({ entries: SETS[which] ?? SETS.some, problems: [] }),
+        launch: (id) => (console.log("[preview] would launch", id), Promise.resolve(true)),
+        icon: () => Promise.resolve(null),
+      };
+    })(),
+    hide: () => (console.log("[preview] would hide this widget"), Promise.resolve(true)),
+    /**
+     * The settings surface, against a config that lives for the length of the page.
+     *
+     * The bounds are the real ones, because they come from the real module: this calls
+     * `src/lib/settings.js`, which is the same file the host calls. So a refusal seen here
+     * is the refusal the desktop gives, rather than a second copy of the rules that can
+     * drift from them. What is *not* modelled is the capability check, for the same reason
+     * the clipboard's is not: it lives in the main process against the window the message
+     * came from, and a browser has no trusted process to put it in.
+     *
+     * `?settings=refused` stands in for a widget that did not ask for it, so the refusal
+     * path can be built and looked at.
+     */
+    settings: (() => {
+      const refused = window.hikariConfig.fromQuery(location.search).settings === "refused";
+      const deny = () =>
+        Promise.reject(new Error('this widget did not ask to change settings. Add "settings": true to its widget.json.'));
+
+      // A stand-in desktop: three widgets, one of them off, one enabled but not running.
+      let config = { palette: "rain-lantern", widgets: {} };
+      const WIDGETS = [
+        { id: "clock", anchor: "top_right", offsetX: 0, offsetY: 0 },
+        { id: "settings", anchor: "middle_center", offsetX: 0, offsetY: 0 },
+        { id: "shader", anchor: "top_left", offsetX: 0, offsetY: 0, enabled: false },
+      ];
+      const RUNNING = ["clock", "settings"];
+      const PALETTES = [
+        { name: "rain-lantern", accent: "#ff7a4d", bg: "hsl(15 10.2% 6.5%)" },
+        { name: "sakura-lake", accent: "#e0932c", bg: "hsl(34 12.9% 97%)" },
+        { name: "twilight-comet", accent: "#7c6cff", bg: "hsl(255 22% 8%)" },
+        { name: "starfall-dusk", accent: "#4dd6ff", bg: "hsl(220 28% 9%)" },
+        { name: "wisteria-alley", accent: "#a97bd6", bg: "hsl(280 20% 96%)" },
+      ];
+
+      const S = window.hikariSettings;
+      const write = (result) => {
+        if (result.error) return Promise.reject(new Error(result.error));
+        config = window.hikariConfig.merge(config, result.patch);
+        return Promise.resolve(true);
+      };
+
+      return {
+        read: () =>
+          refused
+            ? deny()
+            : Promise.resolve({
+                ...S.describe(
+                  WIDGETS.map((w) => window.hikariConfig.merge(w, config.widgets[w.id] ?? {})),
+                  RUNNING,
+                  PALETTES,
+                  config.palette,
+                ),
+                // Two bound and one taken, because the taken one is the state worth seeing:
+                // it is the failure this section of the panel exists for.
+                shortcuts: {
+                  bound: [
+                    { accelerator: "Alt+Shift+H", does: "settings" },
+                    { accelerator: "Alt+R", does: "refresh" },
+                  ],
+                  problems: ['"Ctrl+Alt+D" is already taken by another application, so toggle:decoder does nothing'],
+                },
+              }),
+        enable: (id, on) => (refused ? deny() : write(S.enabledPatch(id, on, WIDGETS.map((w) => w.id)))),
+        anchor: (id, anchor) => (refused ? deny() : write(S.anchorPatch(id, anchor, WIDGETS.map((w) => w.id)))),
+        offset: (id, x, y) => (refused ? deny() : write(S.offsetPatch(id, x, y, WIDGETS.map((w) => w.id)))),
+        palette: (name) => {
+          if (refused) return deny();
+          const choice = S.paletteChoice(name, PALETTES);
+          if (choice.error) return Promise.reject(new Error(choice.error));
+          config = window.hikariConfig.merge(config, { palette: choice.palette });
+          return Promise.resolve(true);
+        },
+      };
+    })(),
     media: {
       playPause: () => (console.log("[preview] play/pause"), Promise.resolve(true)),
       next: () => (console.log("[preview] next"), Promise.resolve(true)),

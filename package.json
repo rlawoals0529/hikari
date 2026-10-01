@@ -1,13 +1,15 @@
 {
   "name": "hikari",
   "version": "0.1.0",
+  "private": true,
   "description": "Desktop widgets written in HTML, CSS and TypeScript. Transparent, always-on-top, driven by live system providers. No window manager required.",
   "main": "src/main.js",
   "type": "commonjs",
   "scripts": {
     "start": "electron .",
     "test": "node --test test/*.test.js",
-    "preview": "npx --yes http-server -p 8910 -s ."
+    "preview": "npx --yes http-server -p 8910 -s .",
+    "e2e": "playwright test"
   },
   "keywords": [
     "desktop",
@@ -20,6 +22,7 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "electron": "^33.2.1"
   }
 }

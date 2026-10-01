@@ -1,4 +1,4 @@
-// Contours — a topographic map of a field that is slowly rewriting itself.
+// Contours: a topographic map of a field that is slowly rewriting itself.
 //
 // Lines are drawn where the height field crosses a level, using the field's own gradient
 // to keep them one pixel wide at every slope. Without that correction the lines fatten

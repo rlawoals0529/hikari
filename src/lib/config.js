@@ -79,10 +79,35 @@ function fromQuery(search) {
   return out;
 }
 
+/**
+ * A block out of a config object, by a name that came from the disk.
+ *
+ * Two guards, and it is worth saying which one does the work, because they were measured
+ * rather than assumed.
+ *
+ * **The type check is the fix.** Widget ids are directory names and provider names are ours,
+ * so a bare `bag[name]` reaches the prototype for perfectly ordinary spellings: a widget in
+ * a directory called `constructor` or `toString` got a function back, `merge` saw something
+ * that was not a plain object and returned it whole, and the manifest was replaced. Measured
+ * before the fix: the widget ended up with `{}`, so no html, no size, no anchor, and nothing
+ * said about why it drew nothing. The same check earns its place on ordinary input too, since
+ * `"widgets": {"clock": 3}` is a plausible typo and used to make the manifest the number 3.
+ *
+ * **The own-property read covers the one case the type check cannot**, which is `__proto__`:
+ * alone among prototype members it *is* a plain object, so it passes the type check and
+ * `Object.prototype` gets merged over the manifest. That is harmless only while nothing has
+ * put an enumerable property on `Object.prototype`, which is not ours to promise -- it is a
+ * global any dependency can reach. Relying on it would make this correct by coincidence.
+ */
+function block(bag, name) {
+  if (!isPlain(bag)) return {};
+  const found = Object.prototype.hasOwnProperty.call(bag, name) ? bag[name] : undefined;
+  return isPlain(found) ? found : {};
+}
+
 /** The three layers, resolved. `live` is a single widget's edits, not the whole file. */
 function widgetConfig(manifest, userConfig, id, live) {
-  const overrides = (userConfig && userConfig.widgets && userConfig.widgets[id]) ?? {};
-  return merge(merge(manifest ?? {}, overrides), live ?? {});
+  return merge(merge(manifest ?? {}, block(userConfig?.widgets, id)), live ?? {});
 }
 
 /**
@@ -92,8 +117,7 @@ function widgetConfig(manifest, userConfig, id, live) {
  * manifest -- there is no single widget to ask. They come from the user config only.
  */
 function providerConfig(provider, userConfig) {
-  const overrides = (userConfig && userConfig.providers && userConfig.providers[provider.name]) ?? {};
-  return merge(provider.defaults ?? {}, overrides);
+  return merge(provider.defaults ?? {}, block(userConfig?.providers, provider.name));
 }
 
 /**

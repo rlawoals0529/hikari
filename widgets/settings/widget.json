@@ -1,0 +1,10 @@
+{
+  "name": "settings",
+  "anchor": "middle_center",
+  "width": 460,
+  "height": 560,
+  "interactive": true,
+  "startHidden": true,
+  "hotkey": "Alt+Shift+H",
+  "settings": true
+}

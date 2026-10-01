@@ -1,0 +1,133 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hikari - notepad</title>
+<!-- Under the host these come from the preload bridge. In a browser the mock stands in,
+     and it needs the shared config module to read the query string. -->
+<script>if(!window.hikari)document.write('<script src="../../src/lib/config.js"><\/script><script src="../../preview/mock-hikari.js"><\/script>')</script>
+<link rel="stylesheet" href="../theme.css">
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; background: transparent; }
+  /* The frame is the widget's, not the app's: rounded, tinted, and the app fills it.
+     Two borders here would be one too many, so the app inside draws none. */
+  #frame {
+    position: fixed; inset: 0;
+    display: grid; grid-template-rows: auto 1fr;
+    /* --panel, not --bg mixed down to 92%.
+       A palette's --dim is chosen to clear 4.5:1 against that palette's --bg at full strength,
+       so thinning the ground spends a margin that was already spent: a light palette over a
+       dark wallpaper came to 4.10:1 on this frame's own chrome. --panel is the token that was
+       designed to be translucent over a wallpaper nobody chose, and a palette replaces it with
+       an opaque surface, which is where its own contrast guarantee holds. */
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: 10px;
+    overflow: hidden;
+    backdrop-filter: blur(20px);
+  }
+  /* One line of chrome, and it exists to say two things: which tool this is, and the key
+     that dismisses it. Nothing else, because everything else is the tool. */
+  #bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px;
+    font: 11px/1 var(--font-body, system-ui, sans-serif);
+    color: var(--dim);
+    border-bottom: 1px solid var(--edge);
+    /* The bar is the drag handle. An overlay you cannot move is an overlay that eventually
+       sits on top of the thing you needed to see. */
+    -webkit-app-region: drag;
+  }
+  #bar b { color: var(--fg); font-weight: 600; letter-spacing: .02em; }
+  #bar .key {
+    margin-left: auto;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    -webkit-app-region: no-drag;
+  }
+  iframe { border: 0; width: 100%; height: 100%; display: block; }
+  #missing {
+    display: grid; place-items: center; padding: 32px;
+    font: 13px/1.7 var(--font-body, system-ui, sans-serif);
+    color: var(--dim); text-align: center;
+  }
+  #missing code { font-family: var(--font-mono, monospace); color: var(--accent-2); }
+</style>
+<div id="frame">
+  <div id="bar"><b>notepad</b> <span id="hint">a line at a time</span> <span class="key" id="key"></span></div>
+  <div id="host"></div>
+</div>
+<script>
+(async () => {
+  const cfg = (await window.hikari.config()) ?? {};
+  const host = document.getElementById("host");
+  document.getElementById("key").textContent = cfg.hotkey ? `${cfg.hotkey} to hide` : "";
+
+  // The app is the tool's own built output, synced in rather than reimplemented. If it is
+  // not there, say what to run: a blank window with no message is the worst outcome, and
+  // "the build has not been synced" is not guessable from an empty frame.
+  const res = await fetch("./app/index.html", { method: "HEAD" }).catch(() => null);
+  if (!res || !res.ok) {
+    host.innerHTML =
+      '<div id="missing"><span>The notepad build is not here yet.<br><br>' +
+      'Run <code>node scripts/sync-tool.mjs notepad ../notepad</code><br>' +
+      'after building it in its own repository.</span></div>';
+    return;
+  }
+
+  // embed=1 turns off the app's own bar and footer, since this frame draws both, and turns
+  // on the one message it listens for. Without that parameter it registers no listener.
+  const frame = document.createElement("iframe");
+  frame.src = "./app/index.html?embed=1";
+  frame.title = "notepad";
+  host.appendChild(frame);
+
+  /**
+   * Push the clipboard in when the overlay is summoned.
+   *
+   * Copy a figure, press the key, and it is already a line. The browser build has no
+   * clipboard access at all and asks for none.
+   *
+   * The app *appends* what arrives rather than replacing what is there, which matters more
+   * here than it does for the sibling: this window holds notes, and the clipboard is not
+   * one of them. Sending the same text twice is a no-op, so hunting for the window by
+   * pressing the key repeatedly does not fill it with duplicates.
+   *
+   * targetOrigin is "*" because it has to be. The app is loaded from a file URL, whose
+   * origin is the string "null", so there is no origin to name. What makes that safe is the
+   * direction: text goes in and nothing comes back out, so the message cannot be used to
+   * read anything.
+   */
+  async function feed() {
+    if (cfg.clipboard !== true) return;
+    try {
+      const text = await window.hikari.clipboard.readText();
+      if (typeof text === "string" && text.trim() !== "") {
+        frame.contentWindow?.postMessage({ type: "hikari:paste", text }, "*");
+      }
+    } catch (e) {
+      // Refused because the manifest did not ask. Not fatal: the tool still works, you just
+      // paste into it yourself, so this is a note rather than a failure on screen.
+      console.warn("[hikari] notepad: no clipboard access,", e.message);
+    }
+  }
+
+  // On show, not on load. A widget that reads the clipboard once at startup reads it at the
+  // wrong moment: the interaction is copy something, then press the key.
+  window.hikari.onShown?.(feed);
+
+  /**
+   * Feed it once it says it is listening, rather than once the iframe says it has loaded.
+   *
+   * `load` fires when the document has finished loading, which is before the app inside has
+   * mounted and attached its message listener, so the first push was posted into a page
+   * with nobody listening and was silently lost. The overlay then opened with an empty box
+   * and no indication that anything had been sent.
+   *
+   * The page announces itself instead. The message it sends carries nothing but its own
+   * existence, so the direction that matters is unchanged: text goes in, and what comes
+   * back out is not data.
+   */
+  window.addEventListener("message", (e) => {
+    if (e.source !== frame.contentWindow) return;
+    if (e.data && typeof e.data === "object" && e.data.type === "hikari:ready") feed();
+  });
+})();
+</script>

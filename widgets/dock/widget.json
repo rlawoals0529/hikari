@@ -1,0 +1,9 @@
+{
+  "name": "dock",
+  "anchor": "bottom_center",
+  "width": 340,
+  "height": 62,
+  "margin": 22,
+  "interactive": true,
+  "launch": true
+}
