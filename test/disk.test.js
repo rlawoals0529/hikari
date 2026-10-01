@@ -14,40 +14,35 @@ const {
 } = require("../src/lib/disk");
 
 /**
- * Captured on this machine with `fs.statfsSync("/")`. macOS 15, APFS.
- *
- * Cross-checked against `df -k /` in the same second, which reported 971298980 1024-blocks
- * and 174513948 available. Both figures below multiply out to exactly that, which is the
- * only reason to trust that `frsize` is the right multiplier rather than to assume it.
+ * Synthetic statfs fixture with round values chosen to exercise the same arithmetic as a
+ * real filesystem without publishing measurements captured from a personal machine.
  */
-const REAL = {
+const FIXTURE = {
   type: 26,
   bsize: 4096,
   frsize: 4096,
-  blocks: 242824745,
-  bfree: 43628487,
-  bavail: 43628487,
-  files: 1745598212,
-  ffree: 1745139480,
+  blocks: 250000000,
+  bfree: 52000000,
+  bavail: 50000000,
+  files: 1000000000,
+  ffree: 900000000,
 };
 
 const HOME = "/Users/someone";
 
-test("a real statfs off this machine reads into the shape a widget uses", () => {
-  const v = readVolume("/", REAL);
+test("a representative statfs fixture reads into the shape a widget uses", () => {
+  const v = readVolume("/", FIXTURE);
   assert.equal(v.label, "/");
-  // 242824745 blocks at 4096 bytes. The same 994610155520 that `df -k` reported as
-  // 971298980 1024-blocks.
-  assert.equal(v.total, 994610155520);
-  assert.equal(v.free, 178702282752);
-  assert.equal(v.used, 994610155520 - 178702282752);
-  assert.equal(Math.round(v.usage), 82);
+  assert.equal(v.total, 1024000000000);
+  assert.equal(v.free, 204800000000);
+  assert.equal(v.used, 819200000000);
+  assert.equal(Math.round(v.usage), 80);
 });
 
 test("free is the count an ordinary write can use, not the one that includes root's reserve", () => {
   // `bfree` counts blocks the filesystem holds back for root. Reading it would keep the
   // widget green while saves start failing, which is the one moment this widget exists for.
-  const v = readVolume("/", { ...REAL, bfree: 43628487, bavail: 1000 });
+  const v = readVolume("/", { ...FIXTURE, bfree: 43628487, bavail: 1000 });
   assert.equal(v.free, 1000 * 4096);
   assert.ok(v.usage > 99);
 });
@@ -56,8 +51,8 @@ test("the block counts are multiplied by frsize, not by bsize", () => {
   // POSIX defines them in units of f_frsize. The two agree on APFS and on ext4, which is
   // exactly why using the wrong one survives every test written on the machine that wrote
   // it, and then reports a 512-byte-fragment filesystem as eight times its real size.
-  const v = readVolume("/", { ...REAL, bsize: 4096, frsize: 512 });
-  assert.equal(v.total, 242824745 * 512);
+  const v = readVolume("/", { ...FIXTURE, bsize: 4096, frsize: 512 });
+  assert.equal(v.total, 250000000 * 512);
   assert.equal(blockSize({ bsize: 4096, frsize: 512 }), 512);
   // bsize is the fallback, for a source that reports only one of them.
   assert.equal(blockSize({ bsize: 4096 }), 4096);
@@ -68,7 +63,7 @@ test("a zero total is unknown usage, not NaN percent", () => {
   // `/proc` and an empty optical drive both report zero blocks. `(0 - 0) / 0` is NaN, which
   // reaches the widget as a number and renders as "NaN%".
   assert.equal(usageOf(0, 0), null);
-  assert.equal(readVolume("/proc", { ...REAL, blocks: 0, bavail: 0 }).usage, null);
+  assert.equal(readVolume("/proc", { ...FIXTURE, blocks: 0, bavail: 0 }).usage, null);
   assert.equal(usageOf(100, null), null);
   assert.equal(usageOf(null, 100), null);
 });
@@ -101,7 +96,7 @@ test("bigint sizes are accepted, because statfs returns them when asked", () => 
 test("used is never negative, however the container reports itself", () => {
   // On APFS a container's free space can exceed one volume's total. A negative used would
   // render as a bar drawn backwards.
-  const v = readVolume("/", { ...REAL, blocks: 100, bavail: 500 });
+  const v = readVolume("/", { ...FIXTURE, blocks: 100, bavail: 500 });
   assert.equal(v.used, 0);
 });
 
@@ -213,7 +208,7 @@ test("a path that could not be measured is still a row, and still named", () => 
 test("one unreadable path costs the others nothing", () => {
   // The same rule as one absent field in a forecast. A single availability flag over the
   // whole provider would blank three good disks for one bad path.
-  const v = view([readVolume("/", REAL), failedVolume("/Volumes/Backup", "no such path (ENOENT)")]);
+  const v = view([readVolume("/", FIXTURE), failedVolume("/Volumes/Backup", "no such path (ENOENT)")]);
   assert.equal(v.available, true);
   assert.equal(v.volumes.length, 2);
   assert.equal(v.volumes[0].usage !== null, true);
