@@ -112,38 +112,35 @@
   ];
 
   /**
-   * The disks, including a path that is not there.
+   * Synthetic disk states, including a path that is not there.
    *
-   * The bad path is a row rather than a gap, because a mistyped path is the most likely
-   * thing to be wrong about this provider and a widget showing one fewer line gives you
-   * nothing to fix. The figures are the real ones off the machine this was built on.
+   * Round fixture values exercise rendering and error states without publishing measurements
+   * copied from a personal machine.
    */
   const DISK = [
     { available: true, volumes: [
-      { path: "/", label: "/", total: 994610155520, free: 178575511552, used: 816034643968, usage: 82.05 },
+      { path: "/", label: "/", total: 1024000000000, free: 204800000000, used: 819200000000, usage: 80 },
     ] },
     { available: true, volumes: [
-      { path: "/", label: "/", total: 994610155520, free: 178575511552, used: 816034643968, usage: 82.05 },
-      { path: "/Volumes/Archive", label: "Archive", total: 4000787030016, free: 61065490432, used: 3939721539584, usage: 98.47 },
+      { path: "/", label: "/", total: 1024000000000, free: 204800000000, used: 819200000000, usage: 80 },
+      { path: "/Volumes/Archive", label: "Archive", total: 4096000000000, free: 512000000000, used: 3584000000000, usage: 87.5 },
     ] },
     { available: true, volumes: [
-      { path: "/", label: "/", total: 994610155520, free: 178575511552, used: 816034643968, usage: 82.05 },
+      { path: "/", label: "/", total: 1024000000000, free: 204800000000, used: 819200000000, usage: 80 },
       { path: "/Volumes/Backup", label: "Backup", error: "no such path (ENOENT)" },
     ] },
     { available: false, reason: '"paths" under providers.disk contains 5, which is not a path', volumes: [] },
   ];
 
   /**
-   * The network, up and down and unreadable.
+   * Synthetic network states: up, down and unreadable.
    *
-   * `rxPerSec` and `txPerSec` are null in every one of them, and that is not an omission in
-   * the fixture: the provider reports throughput as unknown on every platform, for the
-   * reasons at the top of src/lib/network.js. A mock that invented a rate would be the one
-   * place in this repo where a made-up number was allowed.
+   * Documentation-only addresses keep the preview representative without publishing a
+   * machine's actual LAN address or hardware identifier.
    */
   const NETWORK = [
-    { available: true, up: true, name: "en0", address: "192.168.12.67", family: "IPv4",
-      interfaces: [{ name: "en0", address: "192.168.12.67", family: "IPv4", mac: "80:d1:ce:06:a7:c2" }],
+    { available: true, up: true, name: "en0", address: "192.0.2.42", family: "IPv4",
+      interfaces: [{ name: "en0", address: "192.0.2.42", family: "IPv4", mac: "02:00:00:00:00:01" }],
       rxPerSec: null, txPerSec: null },
     { available: true, up: false, name: null, address: null, family: null, interfaces: [],
       rxPerSec: null, txPerSec: null },
