@@ -11,8 +11,8 @@
  * weather code, and deciding whether a reading is still worth showing are all in
  * `src/lib/weather.js`, where they are tested without a network.
  *
- * The fetch happens in the main process, so there is no CORS question at all. Open-Meteo
- * does send `Access-Control-Allow-Origin: *`, which is what makes the browser preview
+ * The provider also permits cross-origin access, which is why the browser preview
+ * can call it directly, but nothing in the desktop host depends on that.
  * possible, but nothing here depends on that.
  */
 const {
