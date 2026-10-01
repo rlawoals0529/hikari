@@ -3,44 +3,41 @@ const assert = require("node:assert/strict");
 const { V4_LINK_LOCAL, V6_LINK_LOCAL, familyOf, isRoutable, readInterfaces, routable } = require("../src/lib/network");
 
 /**
- * Captured on this machine with `os.networkInterfaces()`. macOS 15, on Wi-Fi.
+ * Synthetic interface table modeled after the shapes returned by `os.networkInterfaces()`.
  *
- * The interesting half of this fixture is everything that is not `en0`. `awdl0` and `llw0`
- * are Apple's peer-to-peer interfaces and `utun0` is an idle VPN tunnel, and all three are
- * `internal: false` while holding nothing but an `fe80::` address. A check that only asked
- * about `internal` would count three of them.
+ * Documentation-only addresses and locally administered MACs keep this fixture useful
+ * without publishing a real machine's network identifiers.
  */
-const REAL = {
+const FIXTURE = {
   lo0: [
     { address: "127.0.0.1", netmask: "255.0.0.0", family: "IPv4", mac: "00:00:00:00:00:00", internal: true, cidr: "127.0.0.1/8" },
     { address: "::1", netmask: "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", family: "IPv6", mac: "00:00:00:00:00:00", internal: true, cidr: "::1/128", scopeid: 0 },
     { address: "fe80::1", netmask: "ffff:ffff:ffff:ffff::", family: "IPv6", mac: "00:00:00:00:00:00", internal: true, cidr: "fe80::1/64", scopeid: 1 },
   ],
   en0: [
-    { address: "fe80::14cb:fc65:656:a475", netmask: "ffff:ffff:ffff:ffff::", family: "IPv6", mac: "80:d1:ce:06:a7:c2", internal: false, cidr: "fe80::14cb:fc65:656:a475/64", scopeid: 14 },
-    { address: "192.168.12.67", netmask: "255.255.255.0", family: "IPv4", mac: "80:d1:ce:06:a7:c2", internal: false, cidr: "192.168.12.67/24" },
+    { address: "fe80::1234", netmask: "ffff:ffff:ffff:ffff::", family: "IPv6", mac: "02:00:00:00:00:01", internal: false, cidr: "fe80::1234/64", scopeid: 14 },
+    { address: "192.0.2.42", netmask: "255.255.255.0", family: "IPv4", mac: "02:00:00:00:00:01", internal: false, cidr: "192.0.2.42/24" },
   ],
   awdl0: [
-    { address: "fe80::287e:b5ff:fe46:97f3", netmask: "ffff:ffff:ffff:ffff::", family: "IPv6", mac: "2a:7e:b5:46:97:f3", internal: false, cidr: "fe80::287e:b5ff:fe46:97f3/64", scopeid: 16 },
+    { address: "fe80::abcd", netmask: "ffff:ffff:ffff:ffff::", family: "IPv6", mac: "02:00:00:00:00:02", internal: false, cidr: "fe80::abcd/64", scopeid: 16 },
   ],
   llw0: [
-    { address: "fe80::287e:b5ff:fe46:97f3", netmask: "ffff:ffff:ffff:ffff::", family: "IPv6", mac: "2a:7e:b5:46:97:f3", internal: false, cidr: "fe80::287e:b5ff:fe46:97f3/64", scopeid: 17 },
+    { address: "fe80::abcd", netmask: "ffff:ffff:ffff:ffff::", family: "IPv6", mac: "02:00:00:00:00:02", internal: false, cidr: "fe80::abcd/64", scopeid: 17 },
   ],
   utun0: [
-    { address: "fe80::1aae:704f:3c80:b527", netmask: "ffff:ffff:ffff:ffff::", family: "IPv6", mac: "00:00:00:00:00:00", internal: false, cidr: "fe80::1aae:704f:3c80:b527/64", scopeid: 18 },
+    { address: "fe80::beef", netmask: "ffff:ffff:ffff:ffff::", family: "IPv6", mac: "00:00:00:00:00:00", internal: false, cidr: "fe80::beef/64", scopeid: 18 },
   ],
 };
 
-/** The same machine with the cable out and Wi-Fi off: loopback, and the peer-to-peer
- *  interfaces that exist whether or not anything is connected. */
-const OFFLINE = { lo0: REAL.lo0, awdl0: REAL.awdl0, llw0: REAL.llw0 };
+/** The same synthetic shape with the primary network unavailable. */
+const OFFLINE = { lo0: FIXTURE.lo0, awdl0: FIXTURE.awdl0, llw0: FIXTURE.llw0 };
 
-test("the real interface table off this machine reports the address a person recognises", () => {
-  const n = readInterfaces(REAL);
+test("a representative interface table reports the address a person recognises", () => {
+  const n = readInterfaces(FIXTURE);
   assert.equal(n.available, true);
   assert.equal(n.up, true);
   assert.equal(n.name, "en0");
-  assert.equal(n.address, "192.168.12.67");
+  assert.equal(n.address, "192.0.2.42");
   assert.equal(n.family, "IPv4");
 });
 
@@ -59,9 +56,9 @@ test("a machine with nothing but link-local addresses is down", () => {
 
 test("only the interfaces that could carry traffic are listed", () => {
   // One entry from five interfaces and eight addresses, which is the whole point.
-  const found = routable(REAL);
+  const found = routable(FIXTURE);
   assert.deepEqual(found.map((e) => e.name), ["en0"]);
-  assert.equal(found[0].address, "192.168.12.67");
+  assert.equal(found[0].address, "192.0.2.42");
 });
 
 test("IPv6 link-local is the whole fe80 to febf block, not just fe80", () => {
@@ -90,7 +87,7 @@ test("the unspecified address is not an address", () => {
 });
 
 test("loopback is excluded however it is written", () => {
-  for (const entry of REAL.lo0) assert.equal(isRoutable(entry), false, entry.address);
+  for (const entry of FIXTURE.lo0) assert.equal(isRoutable(entry), false, entry.address);
 });
 
 test("family as the number 4 is accepted, because Node used to report it that way", () => {
@@ -111,7 +108,7 @@ test("an entry with no family is skipped rather than listed with a blank one", (
 
 test("the headline address is IPv4 even when IPv6 is listed first", () => {
   // Both are routable on a dual-stack machine, and the v4 one is what a person recognises as
-  // theirs. On this machine's real table the v6 address is genuinely first.
+  // theirs. The fixture lists v6 first to make the ordering requirement explicit.
   const n = readInterfaces({
     en0: [
       { address: "2001:db8::5", family: "IPv6", internal: false },
@@ -159,7 +156,7 @@ test("throughput is unknown and never zero", () => {
   // Node exposes no byte counters, and the three platforms keep them in three unrelated
   // places, two of them behind a subprocess. A fabricated zero is indistinguishable from a
   // quiet link, which is the exact bug the cpu provider's null was written to avoid.
-  const n = readInterfaces(REAL);
+  const n = readInterfaces(FIXTURE);
   assert.equal(n.rxPerSec, null);
   assert.equal(n.txPerSec, null);
   const offline = readInterfaces(OFFLINE);
